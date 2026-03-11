@@ -1,6 +1,6 @@
 use api_types::{
     CreateIssueCommentRequest, DeleteResponse, IssueComment, ListIssueCommentsQuery,
-    ListIssueCommentsResponse, MemberRole, MutationResponse, NotificationType,
+    ListIssueCommentsResponse, MemberRole, MutationResponse, NotificationPayload, NotificationType,
     UpdateIssueCommentRequest,
 };
 use axum::{
@@ -142,7 +142,10 @@ async fn create_issue_comment(
             ctx.user.id,
             &issue,
             NotificationType::IssueCommentAdded,
-            serde_json::json!({ "comment_preview": comment_preview }),
+            NotificationPayload {
+                comment_preview: Some(comment_preview),
+                ..Default::default()
+            },
             Some(response.data.id),
         )
         .await;

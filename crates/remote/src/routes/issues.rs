@@ -1,6 +1,6 @@
 use api_types::{
     CreateIssueRequest, DeleteResponse, Issue, ListIssuesQuery, ListIssuesResponse,
-    MutationResponse, NotificationType, UpdateIssueRequest,
+    MutationResponse, NotificationPayload, NotificationType, UpdateIssueRequest,
 };
 use axum::{
     Json,
@@ -104,12 +104,13 @@ async fn notify_issue_update_changes(
             &recipients,
             new_issue,
             NotificationType::IssueStatusChanged,
-            serde_json::json!({
-                "old_status_id": old_issue.status_id.to_string(),
-                "new_status_id": new_issue.status_id.to_string(),
-                "old_status_name": old_status_name,
-                "new_status_name": new_status_name,
-            }),
+            NotificationPayload {
+                old_status_id: Some(old_issue.status_id),
+                new_status_id: Some(new_issue.status_id),
+                old_status_name,
+                new_status_name,
+                ..Default::default()
+            },
             None,
             Some(new_issue.id),
         )
@@ -124,9 +125,10 @@ async fn notify_issue_update_changes(
             &recipients,
             new_issue,
             NotificationType::IssueTitleChanged,
-            serde_json::json!({
-                "new_title": new_issue.title,
-            }),
+            NotificationPayload {
+                new_title: Some(new_issue.title.clone()),
+                ..Default::default()
+            },
             None,
             Some(new_issue.id),
         )
@@ -141,7 +143,7 @@ async fn notify_issue_update_changes(
             &recipients,
             new_issue,
             NotificationType::IssueDescriptionChanged,
-            serde_json::json!({}),
+            NotificationPayload::default(),
             None,
             Some(new_issue.id),
         )
@@ -156,10 +158,11 @@ async fn notify_issue_update_changes(
             &recipients,
             new_issue,
             NotificationType::IssuePriorityChanged,
-            serde_json::json!({
-                "old_priority": old_issue.priority,
-                "new_priority": new_issue.priority,
-            }),
+            NotificationPayload {
+                old_priority: old_issue.priority,
+                new_priority: new_issue.priority,
+                ..Default::default()
+            },
             None,
             Some(new_issue.id),
         )
@@ -408,7 +411,7 @@ async fn delete_issue(
         &recipients,
         &issue,
         NotificationType::IssueDeleted,
-        serde_json::json!({}),
+        NotificationPayload::default(),
         None,
         None,
     )

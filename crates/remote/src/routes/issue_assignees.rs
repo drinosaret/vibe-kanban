@@ -1,6 +1,6 @@
 use api_types::{
     CreateIssueAssigneeRequest, DeleteResponse, IssueAssignee, ListIssueAssigneesQuery,
-    ListIssueAssigneesResponse, MutationResponse, NotificationType,
+    ListIssueAssigneesResponse, MutationResponse, NotificationPayload, NotificationType,
 };
 use axum::{
     Json,
@@ -120,9 +120,10 @@ async fn create_issue_assignee(
             payload.user_id,
             &issue,
             NotificationType::IssueAssigneeChanged,
-            serde_json::json!({
-                "assignee_user_id": payload.user_id.to_string(),
-            }),
+            NotificationPayload {
+                assignee_user_id: Some(payload.user_id),
+                ..Default::default()
+            },
         )
         .await;
     }
@@ -170,9 +171,10 @@ async fn delete_issue_assignee(
             assignee.user_id,
             &issue,
             NotificationType::IssueUnassigned,
-            serde_json::json!({
-                "assignee_user_id": assignee.user_id.to_string(),
-            }),
+            NotificationPayload {
+                assignee_user_id: Some(assignee.user_id),
+                ..Default::default()
+            },
         )
         .await;
     }

@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
-use api_types::{Issue, NotificationType};
-use serde_json::json;
+use api_types::{Issue, NotificationPayload, NotificationType};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -16,7 +15,7 @@ pub async fn notify_issue_subscribers(
     actor_user_id: Uuid,
     issue: &Issue,
     notification_type: NotificationType,
-    extra_payload: serde_json::Value,
+    extra_payload: NotificationPayload,
     comment_id: Option<Uuid>,
 ) {
     let recipients = match collect_issue_recipients(pool, organization_id, issue.id, actor_user_id)
@@ -54,7 +53,7 @@ pub async fn send_issue_notifications(
     recipients: &[Uuid],
     issue: &Issue,
     notification_type: NotificationType,
-    extra_payload: serde_json::Value,
+    extra_payload: NotificationPayload,
     comment_id: Option<Uuid>,
     issue_id: Option<Uuid>,
 ) {
@@ -89,7 +88,7 @@ pub async fn send_debounced_issue_notifications(
     recipients: &[Uuid],
     issue: &Issue,
     notification_type: NotificationType,
-    extra_payload: serde_json::Value,
+    extra_payload: NotificationPayload,
     comment_id: Option<Uuid>,
     issue_id: Option<Uuid>,
 ) {
@@ -123,7 +122,7 @@ pub async fn notify_user(
     recipient_user_id: Uuid,
     issue: &Issue,
     notification_type: NotificationType,
-    extra_payload: serde_json::Value,
+    extra_payload: NotificationPayload,
 ) {
     if !is_member(pool, organization_id, recipient_user_id)
         .await
@@ -176,23 +175,26 @@ fn build_payload(
     issue: &Issue,
     actor_user_id: Uuid,
     notification_type: NotificationType,
-    extra_payload: serde_json::Value,
-) -> serde_json::Value {
+    extra_payload: NotificationPayload,
+) -> NotificationPayload {
     let deeplink_path = match notification_type {
         NotificationType::IssueDeleted => format!("/projects/{}", issue.project_id),
         _ => format!("/projects/{}/issues/{}", issue.project_id, issue.id),
     };
-    let mut payload = json!({
-        "deeplink_path": deeplink_path,
-        "issue_title": issue.title,
-        "actor_user_id": actor_user_id.to_string(),
-    });
 
-    if let (Some(base), Some(extra)) = (payload.as_object_mut(), extra_payload.as_object()) {
-        for (k, v) in extra {
-            base.insert(k.clone(), v.clone());
-        }
+    NotificationPayload {
+        deeplink_path: Some(deeplink_path),
+        issue_title: Some(issue.title.clone()),
+        actor_user_id: Some(actor_user_id),
+        comment_preview: extra_payload.comment_preview,
+        old_status_id: extra_payload.old_status_id,
+        new_status_id: extra_payload.new_status_id,
+        old_status_name: extra_payload.old_status_name,
+        new_status_name: extra_payload.new_status_name,
+        new_title: extra_payload.new_title,
+        old_priority: extra_payload.old_priority,
+        new_priority: extra_payload.new_priority,
+        assignee_user_id: extra_payload.assignee_user_id,
+        emoji: extra_payload.emoji,
     }
-
-    payload
 }

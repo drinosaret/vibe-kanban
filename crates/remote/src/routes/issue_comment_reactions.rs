@@ -1,7 +1,7 @@
 use api_types::{
     CreateIssueCommentReactionRequest, DeleteResponse, IssueComment, IssueCommentReaction,
     ListIssueCommentReactionsQuery, ListIssueCommentReactionsResponse, MutationResponse,
-    NotificationType, UpdateIssueCommentReactionRequest,
+    NotificationPayload, NotificationType, UpdateIssueCommentReactionRequest,
 };
 use axum::{
     Json,
@@ -75,10 +75,11 @@ async fn notify_comment_author_about_reaction(
         &[comment_author_id],
         &issue,
         NotificationType::IssueCommentReaction,
-        serde_json::json!({
-            "comment_preview": comment.message.chars().take(100).collect::<String>(),
-            "emoji": emoji,
-        }),
+        NotificationPayload {
+            comment_preview: Some(comment.message.chars().take(100).collect::<String>()),
+            emoji: Some(emoji.to_owned()),
+            ..Default::default()
+        },
         Some(comment.id),
         Some(issue.id),
     )
