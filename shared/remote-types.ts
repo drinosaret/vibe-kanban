@@ -187,7 +187,7 @@ export const PROJECTS_SHAPE = defineShape<Project>(
 
 export const NOTIFICATIONS_SHAPE = defineShape<Notification>(
   'notifications',
-  ['organization_id', 'user_id'] as const,
+  ['user_id'] as const,
   '/v1/shape/notifications',
   '/v1/fallback/notifications'
 );

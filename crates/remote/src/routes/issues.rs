@@ -125,7 +125,6 @@ async fn notify_issue_update_changes(
             new_issue,
             NotificationType::IssueTitleChanged,
             serde_json::json!({
-                "old_title": old_issue.title,
                 "new_title": new_issue.title,
             }),
             None,

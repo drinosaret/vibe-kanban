@@ -1,29 +1,34 @@
 import type { Notification } from 'shared/remote-types';
 import type { OrganizationMemberWithProfile } from 'shared/types';
 
-interface NotificationPayload {
-  deeplink_path?: string;
-  issue_title?: string;
-  actor_user_id?: string;
-  comment_preview?: string;
-  old_status_id?: string;
-  new_status_id?: string;
-  old_status_name?: string;
-  new_status_name?: string;
-  old_title?: string;
-  new_title?: string;
-  old_priority?: string | null;
-  new_priority?: string | null;
-  assignee_user_id?: string;
-  emoji?: string;
-}
+type NotificationPayload = Record<string, unknown>;
 
 export function getPayload(n: Notification): NotificationPayload {
-  return (n.payload ?? {}) as NotificationPayload;
+  if (!n.payload || typeof n.payload !== 'object' || Array.isArray(n.payload)) {
+    return {};
+  }
+  return n.payload as NotificationPayload;
+}
+
+function getString(
+  payload: NotificationPayload,
+  key: string
+): string | undefined {
+  const value = payload[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function getNullableString(
+  payload: NotificationPayload,
+  key: string
+): string | null | undefined {
+  const value = payload[key];
+  if (value === null) return null;
+  return typeof value === 'string' ? value : undefined;
 }
 
 export function getDeeplinkPath(n: Notification): string | null {
-  return getPayload(n).deeplink_path ?? null;
+  return getString(getPayload(n), 'deeplink_path') ?? null;
 }
 
 /** A segment of a notification message — either plain/bold text or a user avatar. */
@@ -54,26 +59,21 @@ function formatPriority(priority?: string | null): string | null {
 
 export function getNotificationSegments(n: Notification): MessageSegment[] {
   const payload = getPayload(n);
-  const title = payload.issue_title ?? 'an issue';
-  const actorId = payload.actor_user_id;
+  const title = getString(payload, 'issue_title') ?? 'an issue';
+  const actorId = getString(payload, 'actor_user_id');
 
   const actor = actorId ? [user(actorId)] : [text('Someone')];
 
   switch (n.notification_type) {
     case 'issue_title_changed': {
-      if (payload.old_title && payload.new_title) {
-        return [
-          ...actor,
-          text(' changed the title '),
-          bold(payload.old_title),
-          text(' to '),
-          bold(payload.new_title),
-        ];
+      const newTitle = getString(payload, 'new_title');
+      if (newTitle) {
+        return [...actor, text(' renamed the issue to '), bold(newTitle)];
       }
-      return [...actor, text(' changed the title on '), bold(title)];
+      return [...actor, text(' renamed '), bold(title)];
     }
     case 'issue_assignee_changed': {
-      const assigneeId = payload.assignee_user_id;
+      const assigneeId = getString(payload, 'assignee_user_id');
       const assignee = assigneeId ? [user(assigneeId)] : [text('Someone')];
       return [
         ...assignee,
@@ -95,8 +95,12 @@ export function getNotificationSegments(n: Notification): MessageSegment[] {
       ];
     }
     case 'issue_priority_changed': {
-      const oldPriority = formatPriority(payload.old_priority);
-      const newPriority = formatPriority(payload.new_priority);
+      const oldPriority = formatPriority(
+        getNullableString(payload, 'old_priority')
+      );
+      const newPriority = formatPriority(
+        getNullableString(payload, 'new_priority')
+      );
       if (oldPriority && newPriority) {
         return [
           ...actor,
@@ -123,11 +127,12 @@ export function getNotificationSegments(n: Notification): MessageSegment[] {
       return [...actor, text(' commented on '), bold(title)];
     }
     case 'issue_comment_reaction': {
-      if (payload.emoji) {
+      const emoji = getString(payload, 'emoji');
+      if (emoji) {
         return [
           ...actor,
           text(' reacted '),
-          bold(payload.emoji),
+          bold(emoji),
           text(' to your comment on '),
           bold(title),
         ];
@@ -135,15 +140,17 @@ export function getNotificationSegments(n: Notification): MessageSegment[] {
       return [...actor, text(' reacted to your comment on '), bold(title)];
     }
     case 'issue_status_changed': {
-      if (payload.old_status_name && payload.new_status_name) {
+      const oldStatusName = getString(payload, 'old_status_name');
+      const newStatusName = getString(payload, 'new_status_name');
+      if (oldStatusName && newStatusName) {
         return [
           ...actor,
           text(' changed status on '),
           bold(title),
           text(' from '),
-          bold(payload.old_status_name),
+          bold(oldStatusName),
           text(' to '),
-          bold(payload.new_status_name),
+          bold(newStatusName),
         ];
       }
       return [...actor, text(' changed status on '), bold(title)];
