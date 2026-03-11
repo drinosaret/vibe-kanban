@@ -79,6 +79,10 @@ async fn notify_issue_update_changes(
             }
         };
 
+    if recipients.is_empty() {
+        return;
+    }
+
     if status_changed {
         let old_status_name =
             ProjectStatusRepository::find_by_id(state.pool(), old_issue.status_id)

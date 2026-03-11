@@ -239,17 +239,21 @@ async fn bulk_update_notifications(
         }));
     }
 
-    let first_notification =
-        NotificationRepository::find_by_id(state.pool(), payload.updates[0].id)
-            .await
-            .map_err(|error| {
-                tracing::error!(?error, "failed to find first notification");
-                ErrorResponse::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "failed to find notification",
-                )
-            })?
-            .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "notification not found"))?;
+    let mut tx = state.pool().begin().await.map_err(|error| {
+        tracing::error!(?error, "failed to begin transaction");
+        ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+    })?;
+
+    let first_notification = NotificationRepository::find_by_id(&mut *tx, payload.updates[0].id)
+        .await
+        .map_err(|error| {
+            tracing::error!(?error, "failed to find first notification");
+            ErrorResponse::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to find notification",
+            )
+        })?
+        .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "notification not found"))?;
 
     let user_id = first_notification.user_id;
     if user_id != ctx.user.id {
@@ -258,11 +262,6 @@ async fn bulk_update_notifications(
             "notification not found",
         ));
     }
-
-    let mut tx = state.pool().begin().await.map_err(|error| {
-        tracing::error!(?error, "failed to begin transaction");
-        ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
-    })?;
 
     let mut results = Vec::with_capacity(payload.updates.len());
 
