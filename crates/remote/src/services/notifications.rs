@@ -62,7 +62,7 @@ pub async fn send_issue_notifications(
         return;
     }
 
-    let payload = build_payload(issue, actor_user_id, extra_payload);
+    let payload = build_payload(issue, actor_user_id, notification_type, extra_payload);
 
     for &recipient_id in recipients {
         if let Err(e) = NotificationRepository::create(
@@ -77,6 +77,41 @@ pub async fn send_issue_notifications(
         .await
         {
             tracing::warn!(?e, %recipient_id, issue_id = %issue.id, "failed to create notification");
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn send_debounced_issue_notifications(
+    pool: &PgPool,
+    organization_id: Uuid,
+    actor_user_id: Uuid,
+    recipients: &[Uuid],
+    issue: &Issue,
+    notification_type: NotificationType,
+    extra_payload: serde_json::Value,
+    comment_id: Option<Uuid>,
+    issue_id: Option<Uuid>,
+) {
+    if recipients.is_empty() {
+        return;
+    }
+
+    let payload = build_payload(issue, actor_user_id, notification_type, extra_payload);
+
+    for &recipient_id in recipients {
+        if let Err(e) = NotificationRepository::upsert_recent(
+            pool,
+            organization_id,
+            recipient_id,
+            notification_type,
+            payload.clone(),
+            issue_id,
+            comment_id,
+        )
+        .await
+        {
+            tracing::warn!(?e, %recipient_id, issue_id = %issue.id, "failed to upsert notification");
         }
     }
 }
@@ -140,9 +175,13 @@ pub async fn collect_issue_recipients(
 fn build_payload(
     issue: &Issue,
     actor_user_id: Uuid,
+    notification_type: NotificationType,
     extra_payload: serde_json::Value,
 ) -> serde_json::Value {
-    let deeplink_path = format!("/projects/{}/issues/{}", issue.project_id, issue.id);
+    let deeplink_path = match notification_type {
+        NotificationType::IssueDeleted => format!("/projects/{}", issue.project_id),
+        _ => format!("/projects/{}/issues/{}", issue.project_id, issue.id),
+    };
     let mut payload = json!({
         "deeplink_path": deeplink_path,
         "issue_title": issue.title,

@@ -12,7 +12,11 @@ interface NotificationPayload {
   new_status_name?: string;
   old_title?: string;
   new_title?: string;
+  old_priority?: string | null;
+  new_priority?: string | null;
   assignee_user_id?: string;
+  emoji?: string;
+  reaction_action?: 'added' | 'changed' | 'removed';
 }
 
 export function getPayload(n: Notification): NotificationPayload {
@@ -39,6 +43,14 @@ function bold(value: string): MessageSegment {
 
 function user(userId: string): MessageSegment {
   return { type: 'user', userId };
+}
+
+function formatPriority(priority?: string | null): string | null {
+  if (!priority) return null;
+  return priority
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 export function getNotificationSegments(n: Notification): MessageSegment[] {
@@ -72,6 +84,9 @@ export function getNotificationSegments(n: Notification): MessageSegment[] {
         ...actor,
       ];
     }
+    case 'issue_unassigned': {
+      return [...actor, text(' unassigned you from '), bold(title)];
+    }
     case 'issue_description_changed': {
       return [
         text('Description updated on '),
@@ -80,8 +95,61 @@ export function getNotificationSegments(n: Notification): MessageSegment[] {
         ...actor,
       ];
     }
+    case 'issue_priority_changed': {
+      const oldPriority = formatPriority(payload.old_priority);
+      const newPriority = formatPriority(payload.new_priority);
+      if (oldPriority && newPriority) {
+        return [
+          ...actor,
+          text(' changed priority on '),
+          bold(title),
+          text(' from '),
+          bold(oldPriority),
+          text(' to '),
+          bold(newPriority),
+        ];
+      }
+      if (newPriority) {
+        return [
+          ...actor,
+          text(' changed priority on '),
+          bold(title),
+          text(' to '),
+          bold(newPriority),
+        ];
+      }
+      return [...actor, text(' cleared priority on '), bold(title)];
+    }
     case 'issue_comment_added': {
       return [...actor, text(' commented on '), bold(title)];
+    }
+    case 'issue_comment_reaction': {
+      if (payload.reaction_action === 'removed') {
+        return [
+          ...actor,
+          text(' removed a reaction from your comment on '),
+          bold(title),
+        ];
+      }
+      if (payload.reaction_action === 'changed' && payload.emoji) {
+        return [
+          ...actor,
+          text(' changed their reaction to '),
+          bold(payload.emoji),
+          text(' on your comment on '),
+          bold(title),
+        ];
+      }
+      if (payload.emoji) {
+        return [
+          ...actor,
+          text(' reacted '),
+          bold(payload.emoji),
+          text(' to your comment on '),
+          bold(title),
+        ];
+      }
+      return [...actor, text(' reacted to your comment on '), bold(title)];
     }
     case 'issue_status_changed': {
       if (payload.old_status_name && payload.new_status_name) {

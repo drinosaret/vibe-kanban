@@ -4,14 +4,13 @@ use api_types::{
     Attachment, AttachmentUrlResponse, AttachmentWithBlob, Blob, CreateIssueAssigneeRequest,
     CreateIssueCommentReactionRequest, CreateIssueCommentRequest, CreateIssueFollowerRequest,
     CreateIssueRelationshipRequest, CreateIssueRequest, CreateIssueTagRequest,
-    CreateNotificationRequest, CreateProjectRequest, CreateProjectStatusRequest, CreateTagRequest,
-    Issue, IssueAssignee, IssueComment, IssueCommentReaction, IssueFollower, IssuePriority,
-    IssueRelationship, IssueRelationshipType, IssueTag, ListRelayHostsResponse, MemberRole,
-    Notification, NotificationType, OrganizationMember, Project, ProjectStatus, PullRequest,
-    PullRequestStatus, RelayHost, RelaySession, RelaySessionAuthCodeResponse, Tag,
-    UpdateIssueCommentReactionRequest, UpdateIssueCommentRequest, UpdateIssueRequest,
-    UpdateNotificationRequest, UpdateProjectRequest, UpdateProjectStatusRequest, UpdateTagRequest,
-    User, UserData, Workspace,
+    CreateProjectRequest, CreateProjectStatusRequest, CreateTagRequest, Issue, IssueAssignee,
+    IssueComment, IssueCommentReaction, IssueFollower, IssuePriority, IssueRelationship,
+    IssueRelationshipType, IssueTag, ListRelayHostsResponse, MemberRole, Notification,
+    NotificationType, OrganizationMember, Project, ProjectStatus, PullRequest, PullRequestStatus,
+    RelayHost, RelaySession, RelaySessionAuthCodeResponse, Tag, UpdateIssueCommentReactionRequest,
+    UpdateIssueCommentRequest, UpdateIssueRequest, UpdateNotificationRequest, UpdateProjectRequest,
+    UpdateProjectStatusRequest, UpdateTagRequest, User, UserData, Workspace,
 };
 use remote::{
     routes::{
@@ -104,7 +103,6 @@ fn export_shapes() -> String {
         // Mutation request types
         CreateProjectRequest::decl(),
         UpdateProjectRequest::decl(),
-        CreateNotificationRequest::decl(),
         UpdateNotificationRequest::decl(),
         CreateTagRequest::decl(),
         UpdateTagRequest::decl(),

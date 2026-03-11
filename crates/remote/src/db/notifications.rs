@@ -186,103 +186,6 @@ impl NotificationRepository {
         Ok(records)
     }
 
-    pub async fn mark_seen<'e, E>(executor: E, id: Uuid) -> Result<Notification, NotificationError>
-    where
-        E: Executor<'e, Database = Postgres>,
-    {
-        let record = sqlx::query_as!(
-            Notification,
-            r#"
-            UPDATE notifications
-            SET seen = TRUE
-            WHERE id = $1
-            RETURNING
-                id                AS "id!: Uuid",
-                organization_id   AS "organization_id!: Uuid",
-                user_id           AS "user_id!: Uuid",
-                notification_type AS "notification_type!: NotificationType",
-                payload           AS "payload!: Value",
-                issue_id          AS "issue_id: Uuid",
-                comment_id        AS "comment_id: Uuid",
-                seen              AS "seen!",
-                dismissed_at      AS "dismissed_at: DateTime<Utc>",
-                created_at        AS "created_at!: DateTime<Utc>"
-            "#,
-            id
-        )
-        .fetch_one(executor)
-        .await?;
-
-        Ok(record)
-    }
-
-    pub async fn mark_all_seen<'e, E>(
-        executor: E,
-        user_id: Uuid,
-        organization_id: Uuid,
-    ) -> Result<u64, NotificationError>
-    where
-        E: Executor<'e, Database = Postgres>,
-    {
-        let result = sqlx::query!(
-            "UPDATE notifications SET seen = TRUE WHERE user_id = $1 AND organization_id = $2 AND seen = FALSE",
-            user_id,
-            organization_id
-        )
-        .execute(executor)
-        .await?;
-
-        Ok(result.rows_affected())
-    }
-
-    pub async fn dismiss<'e, E>(executor: E, id: Uuid) -> Result<Notification, NotificationError>
-    where
-        E: Executor<'e, Database = Postgres>,
-    {
-        let now = Utc::now();
-        let record = sqlx::query_as!(
-            Notification,
-            r#"
-            UPDATE notifications
-            SET dismissed_at = $1
-            WHERE id = $2
-            RETURNING
-                id                AS "id!: Uuid",
-                organization_id   AS "organization_id!: Uuid",
-                user_id           AS "user_id!: Uuid",
-                notification_type AS "notification_type!: NotificationType",
-                payload           AS "payload!: Value",
-                issue_id          AS "issue_id: Uuid",
-                comment_id        AS "comment_id: Uuid",
-                seen              AS "seen!",
-                dismissed_at      AS "dismissed_at: DateTime<Utc>",
-                created_at        AS "created_at!: DateTime<Utc>"
-            "#,
-            now,
-            id
-        )
-        .fetch_one(executor)
-        .await?;
-
-        Ok(record)
-    }
-
-    pub async fn unread_count<'e, E>(executor: E, user_id: Uuid) -> Result<i64, NotificationError>
-    where
-        E: Executor<'e, Database = Postgres>,
-    {
-        let result = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND seen = FALSE AND dismissed_at IS NULL",
-            user_id
-        )
-        .fetch_one(executor)
-        .await?;
-
-        Ok(result.unwrap_or(0))
-    }
-
-    /// Update a notification with partial fields. Uses COALESCE to preserve existing values
-    /// when None is provided. Automatically sets `dismissed_at` when `seen` is set to true.
     pub async fn update<'e, E>(
         executor: E,
         id: Uuid,
@@ -315,6 +218,87 @@ impl NotificationRepository {
             "#,
             seen,
             id
+        )
+        .fetch_one(executor)
+        .await?;
+
+        Ok(record)
+    }
+
+    pub async fn upsert_recent<'e, E>(
+        executor: E,
+        organization_id: Uuid,
+        user_id: Uuid,
+        notification_type: NotificationType,
+        payload: Value,
+        issue_id: Option<Uuid>,
+        comment_id: Option<Uuid>,
+    ) -> Result<Notification, NotificationError>
+    where
+        E: Executor<'e, Database = Postgres>,
+    {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        let record = sqlx::query_as!(
+            Notification,
+            r#"
+            WITH existing AS (
+                SELECT id FROM notifications
+                WHERE user_id = $3
+                  AND notification_type = $4
+                  AND issue_id IS NOT DISTINCT FROM $6
+                  AND comment_id IS NOT DISTINCT FROM $7
+                  AND created_at > NOW() - INTERVAL '1 minute'
+                ORDER BY created_at DESC
+                LIMIT 1
+            ),
+            updated AS (
+                UPDATE notifications
+                SET payload = $5,
+                    seen = FALSE,
+                    dismissed_at = NULL,
+                    created_at = $8
+                WHERE id = (SELECT id FROM existing)
+                RETURNING
+                    id                AS "id!: Uuid",
+                    organization_id   AS "organization_id!: Uuid",
+                    user_id           AS "user_id!: Uuid",
+                    notification_type AS "notification_type!: NotificationType",
+                    payload           AS "payload!: Value",
+                    issue_id          AS "issue_id: Uuid",
+                    comment_id        AS "comment_id: Uuid",
+                    seen              AS "seen!",
+                    dismissed_at      AS "dismissed_at: DateTime<Utc>",
+                    created_at        AS "created_at!: DateTime<Utc>"
+            ),
+            inserted AS (
+                INSERT INTO notifications (id, organization_id, user_id, notification_type, payload, issue_id, comment_id, created_at)
+                SELECT $1, $2, $3, $4, $5, $6, $7, $8
+                WHERE NOT EXISTS (SELECT 1 FROM existing)
+                RETURNING
+                    id                AS "id!: Uuid",
+                    organization_id   AS "organization_id!: Uuid",
+                    user_id           AS "user_id!: Uuid",
+                    notification_type AS "notification_type!: NotificationType",
+                    payload           AS "payload!: Value",
+                    issue_id          AS "issue_id: Uuid",
+                    comment_id        AS "comment_id: Uuid",
+                    seen              AS "seen!",
+                    dismissed_at      AS "dismissed_at: DateTime<Utc>",
+                    created_at        AS "created_at!: DateTime<Utc>"
+            )
+            SELECT * FROM updated
+            UNION ALL
+            SELECT * FROM inserted
+            "#,
+            id,
+            organization_id,
+            user_id,
+            notification_type as NotificationType,
+            payload,
+            issue_id,
+            comment_id,
+            now
         )
         .fetch_one(executor)
         .await?;

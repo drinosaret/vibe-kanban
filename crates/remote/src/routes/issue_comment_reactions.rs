@@ -1,7 +1,7 @@
 use api_types::{
-    CreateIssueCommentReactionRequest, DeleteResponse, IssueCommentReaction,
+    CreateIssueCommentReactionRequest, DeleteResponse, IssueComment, IssueCommentReaction,
     ListIssueCommentReactionsQuery, ListIssueCommentReactionsResponse, MutationResponse,
-    UpdateIssueCommentReactionRequest,
+    NotificationType, UpdateIssueCommentReactionRequest,
 };
 use axum::{
     Json,
@@ -20,9 +20,11 @@ use crate::{
     auth::RequestContext,
     db::{
         issue_comment_reactions::IssueCommentReactionRepository,
-        issue_comments::IssueCommentRepository,
+        issue_comments::IssueCommentRepository, issues::IssueRepository,
+        organization_members::is_member,
     },
     mutation_definition::MutationBuilder,
+    services::notifications::send_debounced_issue_notifications,
 };
 
 /// Mutation definition for IssueCommentReaction - provides both router and TypeScript metadata.
@@ -41,6 +43,48 @@ pub fn mutation() -> MutationBuilder<
 
 pub fn router() -> axum::Router<AppState> {
     mutation().router()
+}
+
+async fn notify_comment_author_about_reaction(
+    state: &AppState,
+    organization_id: Uuid,
+    actor_user_id: Uuid,
+    comment: &IssueComment,
+    emoji: &str,
+    reaction_action: &'static str,
+) {
+    let Some(comment_author_id) = comment.author_id else {
+        return;
+    };
+
+    if comment_author_id == actor_user_id
+        || !is_member(state.pool(), organization_id, comment_author_id)
+            .await
+            .unwrap_or(false)
+    {
+        return;
+    }
+
+    let Ok(Some(issue)) = IssueRepository::find_by_id(state.pool(), comment.issue_id).await else {
+        return;
+    };
+
+    send_debounced_issue_notifications(
+        state.pool(),
+        organization_id,
+        actor_user_id,
+        &[comment_author_id],
+        &issue,
+        NotificationType::IssueCommentReaction,
+        serde_json::json!({
+            "comment_preview": comment.message.chars().take(100).collect::<String>(),
+            "emoji": emoji,
+            "reaction_action": reaction_action,
+        }),
+        Some(comment.id),
+        Some(issue.id),
+    )
+    .await;
 }
 
 #[instrument(
@@ -129,7 +173,7 @@ async fn create_issue_comment_reaction(
         })?
         .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "comment not found"))?;
 
-    ensure_issue_access(state.pool(), ctx.user.id, comment.issue_id).await?;
+    let organization_id = ensure_issue_access(state.pool(), ctx.user.id, comment.issue_id).await?;
 
     let response = IssueCommentReactionRepository::create(
         state.pool(),
@@ -143,6 +187,16 @@ async fn create_issue_comment_reaction(
         tracing::error!(?error, "failed to create reaction");
         db_error(error, "failed to create reaction")
     })?;
+
+    notify_comment_author_about_reaction(
+        &state,
+        organization_id,
+        ctx.user.id,
+        &comment,
+        &response.data.emoji,
+        "added",
+    )
+    .await;
 
     Ok(Json(response))
 }
@@ -182,7 +236,7 @@ async fn update_issue_comment_reaction(
         })?
         .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "comment not found"))?;
 
-    ensure_issue_access(state.pool(), ctx.user.id, comment.issue_id).await?;
+    let organization_id = ensure_issue_access(state.pool(), ctx.user.id, comment.issue_id).await?;
 
     let response = IssueCommentReactionRepository::update(
         state.pool(),
@@ -194,6 +248,16 @@ async fn update_issue_comment_reaction(
         tracing::error!(?error, "failed to update reaction");
         ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
     })?;
+
+    notify_comment_author_about_reaction(
+        &state,
+        organization_id,
+        ctx.user.id,
+        &comment,
+        &response.data.emoji,
+        "changed",
+    )
+    .await;
 
     Ok(Json(response))
 }
@@ -232,7 +296,7 @@ async fn delete_issue_comment_reaction(
         })?
         .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "comment not found"))?;
 
-    ensure_issue_access(state.pool(), ctx.user.id, comment.issue_id).await?;
+    let organization_id = ensure_issue_access(state.pool(), ctx.user.id, comment.issue_id).await?;
 
     let response = IssueCommentReactionRepository::delete(state.pool(), issue_comment_reaction_id)
         .await
@@ -240,6 +304,16 @@ async fn delete_issue_comment_reaction(
             tracing::error!(?error, "failed to delete reaction");
             ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
         })?;
+
+    notify_comment_author_about_reaction(
+        &state,
+        organization_id,
+        ctx.user.id,
+        &comment,
+        &reaction.emoji,
+        "removed",
+    )
+    .await;
 
     Ok(Json(response))
 }
