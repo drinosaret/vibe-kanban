@@ -24,7 +24,7 @@ use crate::{
         project_statuses::ProjectStatusRepository,
     },
     mutation_definition::MutationBuilder,
-    services::notifications::{
+    notifications::{
         collect_issue_recipients, send_debounced_issue_notifications, send_issue_notifications,
     },
 };

@@ -23,7 +23,7 @@ use crate::{
         organization_members::check_user_role,
     },
     mutation_definition::MutationBuilder,
-    services::notifications::notify_issue_subscribers,
+    notifications::notify_issue_subscribers,
 };
 
 /// Mutation definition for IssueComment - provides both router and TypeScript metadata.

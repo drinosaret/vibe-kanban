@@ -19,7 +19,7 @@ use crate::{
     auth::RequestContext,
     db::{issue_assignees::IssueAssigneeRepository, issues::IssueRepository},
     mutation_definition::{MutationBuilder, NoUpdate},
-    services::notifications::notify_user,
+    notifications::notify_user,
 };
 
 /// Mutation definition for IssueAssignee - provides both router and TypeScript metadata.

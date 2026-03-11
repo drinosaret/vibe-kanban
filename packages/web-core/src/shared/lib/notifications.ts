@@ -16,7 +16,6 @@ interface NotificationPayload {
   new_priority?: string | null;
   assignee_user_id?: string;
   emoji?: string;
-  reaction_action?: 'added' | 'changed' | 'removed';
 }
 
 export function getPayload(n: Notification): NotificationPayload {
@@ -124,22 +123,6 @@ export function getNotificationSegments(n: Notification): MessageSegment[] {
       return [...actor, text(' commented on '), bold(title)];
     }
     case 'issue_comment_reaction': {
-      if (payload.reaction_action === 'removed') {
-        return [
-          ...actor,
-          text(' removed a reaction from your comment on '),
-          bold(title),
-        ];
-      }
-      if (payload.reaction_action === 'changed' && payload.emoji) {
-        return [
-          ...actor,
-          text(' changed their reaction to '),
-          bold(payload.emoji),
-          text(' on your comment on '),
-          bold(title),
-        ];
-      }
       if (payload.emoji) {
         return [
           ...actor,

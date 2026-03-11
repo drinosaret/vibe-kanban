@@ -24,7 +24,7 @@ use crate::{
         organization_members::is_member,
     },
     mutation_definition::MutationBuilder,
-    services::notifications::send_debounced_issue_notifications,
+    notifications::send_issue_notifications,
 };
 
 /// Mutation definition for IssueCommentReaction - provides both router and TypeScript metadata.
@@ -51,7 +51,6 @@ async fn notify_comment_author_about_reaction(
     actor_user_id: Uuid,
     comment: &IssueComment,
     emoji: &str,
-    reaction_action: &'static str,
 ) {
     let Some(comment_author_id) = comment.author_id else {
         return;
@@ -69,7 +68,7 @@ async fn notify_comment_author_about_reaction(
         return;
     };
 
-    send_debounced_issue_notifications(
+    send_issue_notifications(
         state.pool(),
         organization_id,
         actor_user_id,
@@ -79,7 +78,6 @@ async fn notify_comment_author_about_reaction(
         serde_json::json!({
             "comment_preview": comment.message.chars().take(100).collect::<String>(),
             "emoji": emoji,
-            "reaction_action": reaction_action,
         }),
         Some(comment.id),
         Some(issue.id),
@@ -194,7 +192,6 @@ async fn create_issue_comment_reaction(
         ctx.user.id,
         &comment,
         &response.data.emoji,
-        "added",
     )
     .await;
 
@@ -255,7 +252,6 @@ async fn update_issue_comment_reaction(
         ctx.user.id,
         &comment,
         &response.data.emoji,
-        "changed",
     )
     .await;
 
@@ -296,7 +292,7 @@ async fn delete_issue_comment_reaction(
         })?
         .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "comment not found"))?;
 
-    let organization_id = ensure_issue_access(state.pool(), ctx.user.id, comment.issue_id).await?;
+    ensure_issue_access(state.pool(), ctx.user.id, comment.issue_id).await?;
 
     let response = IssueCommentReactionRepository::delete(state.pool(), issue_comment_reaction_id)
         .await
@@ -304,16 +300,6 @@ async fn delete_issue_comment_reaction(
             tracing::error!(?error, "failed to delete reaction");
             ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
         })?;
-
-    notify_comment_author_about_reaction(
-        &state,
-        organization_id,
-        ctx.user.id,
-        &comment,
-        &reaction.emoji,
-        "removed",
-    )
-    .await;
 
     Ok(Json(response))
 }
