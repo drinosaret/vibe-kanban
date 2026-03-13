@@ -10,6 +10,6 @@ pnpm run build
 Pop-Location
 
 Write-Host "Building Rust server (release)..." -ForegroundColor Cyan
-cargo build --release --manifest-path "$root\Cargo.toml"
+cargo build --release --manifest-path "$root\Cargo.toml" --bin server --bin vibe-kanban-mcp --bin review
 
 Write-Host "Done! Run 'vk' from any terminal to launch." -ForegroundColor Green
