@@ -335,6 +335,18 @@ impl LocalDeployment {
     }
 
     pub async fn get_login_status(&self) -> LoginStatus {
+        // If no remote client is configured, return a local-only logged-in status
+        if self.remote_client().is_err() {
+            return LoginStatus::LoggedIn {
+                profile: api_types::ProfileResponse {
+                    user_id: uuid::Uuid::nil(),
+                    username: Some("local".to_string()),
+                    email: "local@localhost".to_string(),
+                    providers: vec![],
+                },
+            };
+        }
+
         if self.auth_context.get_credentials().await.is_none() {
             self.auth_context.clear_profile().await;
             return LoginStatus::LoggedOut;

@@ -1,31 +1,27 @@
-<p align="center">
-  <a href="https://vibekanban.com">
-    <picture>
-      <source srcset="packages/public/vibe-kanban-logo-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/public/vibe-kanban-logo.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/public/vibe-kanban-logo.svg" alt="Vibe Kanban Logo">
-    </picture>
-  </a>
-</p>
+# Vibe Kanban (Fork)
 
-<p align="center">Get 10X more out of Claude Code, Gemini CLI, Codex, Amp and other coding agents...</p>
-<p align="center">
-  <a href="https://www.npmjs.com/package/vibe-kanban"><img alt="npm" src="https://img.shields.io/npm/v/vibe-kanban?style=flat-square" /></a>
-  <a href="https://github.com/BloopAI/vibe-kanban/blob/main/.github/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/BloopAI/vibe-kanban/.github%2Fworkflows%2Fpublish.yml" /></a>
-  <a href="https://deepwiki.com/BloopAI/vibe-kanban"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
-</p>
+> Fork of [BloopAI/vibe-kanban](https://github.com/BloopAI/vibe-kanban) with sandboxing removed and a local-first kanban system.
 
-<h1 align="center">
-  <a href="https://jobs.polymer.co/vibe-kanban?source=github"><strong>We're hiring!</strong></a>
-</h1>
+## What's different in this fork
 
-![](packages/public/vibe-kanban-screenshot-overview.png)
+- **No worktree isolation** — workspaces operate directly in the repo instead of creating isolated git worktrees per workspace. Simpler setup, no symlink juggling.
+- **Local kanban** — SQLite-backed projects, issues, statuses, and tags that work without any cloud/remote infrastructure.
+- **Windows dev support** — `.npmrc` configured with `script-shell=bash` so pnpm scripts work on Windows.
+
+## Upstream
+
+This fork tracks [BloopAI/vibe-kanban](https://github.com/BloopAI/vibe-kanban). To pull upstream changes:
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+---
 
 ## Overview
 
-In a world where software engineers spend most of their time planning and reviewing coding agents, the most impactful way to ship more is to get faster at planning and review.
-
-Vibe Kanban is built for this. Use kanban issues to plan work, either privately or with your team. When you're ready to begin, create workspaces where coding agents can execute.
+Vibe Kanban is a kanban board for planning and reviewing coding agent work.
 
 - **Plan with kanban issues** — create, prioritise, and assign issues on a kanban board
 - **Run coding agents in workspaces** — each workspace gives an agent a branch, a terminal, and a dev server
@@ -33,10 +29,6 @@ Vibe Kanban is built for this. Use kanban issues to plan work, either privately 
 - **Preview your app** — built-in browser with devtools, inspect mode, and device emulation
 - **Switch between 10+ coding agents** — Claude Code, Codex, Gemini CLI, GitHub Copilot, Amp, Cursor, OpenCode, Droid, CCR, and Qwen Code
 - **Create pull requests and merge** — open PRs with AI-generated descriptions, review on GitHub, and merge
-
-![](packages/public/vibe-kanban-screenshot-workspace.png)
-
-One command. Describe the work, review the diff, ship it.
 
 ```bash
 npx vibe-kanban

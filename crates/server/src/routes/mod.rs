@@ -16,6 +16,7 @@ pub mod execution_processes;
 pub mod frontend;
 pub mod health;
 pub mod images;
+pub mod local_kanban;
 pub mod migration;
 pub mod oauth;
 pub mod organizations;
@@ -50,6 +51,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(releases::router())
         .merge(migration::router())
         .merge(sessions::router(&deployment))
+        .merge(local_kanban::router())
         .merge(terminal::router())
         .nest("/remote", remote::router())
         .nest("/images", images::routes())

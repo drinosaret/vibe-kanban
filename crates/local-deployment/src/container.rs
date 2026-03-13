@@ -1497,7 +1497,7 @@ impl ContainerService for LocalContainerService {
             {
                 Ok(c) => c,
                 Err(e) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         "Skipping diff stream for repo {}: failed to get base commit: {}",
                         repo.name,
                         e

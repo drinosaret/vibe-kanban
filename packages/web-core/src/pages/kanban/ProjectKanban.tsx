@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Group, Layout, Panel, Separator } from 'react-resizable-panels';
 import { OrgProvider } from '@/shared/providers/remote/OrgProvider';
+import { LocalOrgProvider } from '@/shared/providers/remote/LocalOrgProvider';
 import { useOrgContext } from '@/shared/hooks/useOrgContext';
 import { ProjectProvider } from '@/shared/providers/remote/ProjectProvider';
+import { LocalProjectProvider } from '@/shared/providers/remote/LocalProjectProvider';
 import { useProjectContext } from '@/shared/hooks/useProjectContext';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { useActions } from '@/shared/hooks/useActions';
 import { usePageTitle } from '@/shared/hooks/usePageTitle';
 import { KanbanContainer } from '@/features/kanban/ui/KanbanContainer';
@@ -172,6 +175,7 @@ function ProjectKanbanLayout({ projectName }: { projectName: string }) {
  */
 function ProjectKanbanInner({ projectId }: { projectId: string }) {
   const { t } = useTranslation('common');
+  const isLocalOnly = !getRemoteApiUrl();
   const { projects, isLoading } = useOrgContext();
 
   const project = projects.find((p) => p.id === projectId);
@@ -192,12 +196,14 @@ function ProjectKanbanInner({ projectId }: { projectId: string }) {
     );
   }
 
+  const ProviderComponent = isLocalOnly ? LocalProjectProvider : ProjectProvider;
+
   return (
-    <ProjectProvider projectId={projectId}>
+    <ProviderComponent projectId={projectId}>
       <ProjectMutationsRegistration>
         <ProjectKanbanLayout projectName={project.name} />
       </ProjectMutationsRegistration>
-    </ProjectProvider>
+    </ProviderComponent>
   );
 }
 
@@ -248,6 +254,7 @@ export function ProjectKanban() {
     useCurrentKanbanRouteState();
   const appNavigation = useAppNavigation();
   const { t } = useTranslation('common');
+  const isLocalOnly = !getRemoteApiUrl();
   const { isSignedIn, isLoaded: authLoaded } = useAuth();
   const issueComposerKey = useMemo(() => {
     if (!projectId) {
@@ -282,8 +289,11 @@ export function ProjectKanban() {
     projectId ?? undefined
   );
 
-  // Show loading while auth state is being determined
-  if (!authLoaded || isLoading) {
+  // In local-only mode, use local-org as the organization ID
+  const effectiveOrgId = isLocalOnly ? (organizationId ?? 'local-org') : organizationId;
+
+  // Show loading while auth state is being determined (skip for local-only)
+  if (!isLocalOnly && (!authLoaded || isLoading)) {
     return (
       <div className="flex items-center justify-center h-full w-full">
         <p className="text-low">{t('states.loading')}</p>
@@ -291,8 +301,8 @@ export function ProjectKanban() {
     );
   }
 
-  // If not signed in, prompt user to log in
-  if (!isSignedIn) {
+  // If not signed in and not local-only, prompt user to log in
+  if (!isLocalOnly && !isSignedIn) {
     return (
       <div className="flex items-center justify-center h-full w-full p-base">
         <LoginRequiredPrompt
@@ -305,7 +315,7 @@ export function ProjectKanban() {
     );
   }
 
-  if (!projectId || !organizationId) {
+  if (!projectId || !effectiveOrgId) {
     return (
       <div className="flex items-center justify-center h-full w-full">
         <p className="text-low">{t('kanban.noProjectFound')}</p>
@@ -313,9 +323,11 @@ export function ProjectKanban() {
     );
   }
 
+  const OrgProviderComponent = isLocalOnly ? LocalOrgProvider : OrgProvider;
+
   return (
-    <OrgProvider organizationId={organizationId}>
+    <OrgProviderComponent organizationId={effectiveOrgId}>
       <ProjectKanbanInner projectId={projectId} />
-    </OrgProvider>
+    </OrgProviderComponent>
   );
 }

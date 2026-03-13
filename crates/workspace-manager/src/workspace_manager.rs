@@ -220,10 +220,10 @@ impl WorkspaceManager {
         tokio::spawn(async move {
             let WorkspaceDeletionContext {
                 workspace_id,
-                branch_name,
+                branch_name: _branch_name,
                 workspace_dir,
                 repositories,
-                repo_paths,
+                repo_paths: _repo_paths,
                 session_ids,
             } = context;
 
@@ -258,21 +258,11 @@ impl WorkspaceManager {
                 }
             }
 
+            // Branch deletion disabled in this fork.
+            // All workspaces share the same branch — deleting it would
+            // destroy the active working branch.
             if delete_branches {
-                let git_service = GitService::new();
-                for repo_path in repo_paths {
-                    match git_service.delete_branch(&repo_path, &branch_name) {
-                        Ok(()) => {
-                            info!("Deleted branch '{}' from repo {:?}", branch_name, repo_path);
-                        }
-                        Err(e) => {
-                            warn!(
-                                "Failed to delete branch '{}' from repo {:?}: {}",
-                                branch_name, repo_path, e
-                            );
-                        }
-                    }
-                }
+                debug!("Branch deletion requested but disabled in no-isolation fork");
             }
         });
     }
@@ -291,7 +281,7 @@ impl WorkspaceManager {
     pub async fn create_workspace(
         workspace_dir: &Path,
         repos: &[RepoWorkspaceInput],
-        branch_name: &str,
+        _branch_name: &str,
     ) -> Result<WorktreeContainer, WorkspaceError> {
         if repos.is_empty() {
             return Err(WorkspaceError::NoRepositories);
@@ -311,20 +301,14 @@ impl WorkspaceManager {
             let worktree_path = workspace_dir.join(&input.repo.name);
 
             debug!(
-                "Creating worktree for repo '{}' at {}",
+                "Creating symlink for repo '{}': {} -> {}",
                 input.repo.name,
-                worktree_path.display()
+                worktree_path.display(),
+                input.repo.path.display()
             );
 
-            match WorktreeManager::create_worktree(
-                &input.repo.path,
-                branch_name,
-                &worktree_path,
-                &input.target_branch,
-                true,
-            )
-            .await
-            {
+            // Create symlink: workspace_dir/<repo-name> -> actual repo path
+            match create_repo_symlink(&input.repo.path, &worktree_path).await {
                 Ok(()) => {
                     created_worktrees.push(RepoWorktree {
                         repo_id: input.repo.id,
@@ -335,14 +319,20 @@ impl WorkspaceManager {
                 }
                 Err(e) => {
                     error!(
-                        "Failed to create worktree for repo '{}': {}. Rolling back...",
+                        "Failed to create symlink for repo '{}': {}. Rolling back...",
                         input.repo.name, e
                     );
 
-                    // Rollback: cleanup all worktrees we've created so far
-                    Self::cleanup_created_worktrees(&created_worktrees).await;
+                    // Rollback: remove symlinks we've created so far
+                    for wt in &created_worktrees {
+                        if let Err(cleanup_err) = remove_symlink(&wt.worktree_path).await {
+                            debug!(
+                                "Could not remove symlink during rollback: {}",
+                                cleanup_err
+                            );
+                        }
+                    }
 
-                    // Also remove the workspace directory if it's empty
                     if let Err(cleanup_err) = tokio::fs::remove_dir(workspace_dir).await {
                         debug!(
                             "Could not remove workspace dir during rollback: {}",
@@ -351,7 +341,7 @@ impl WorkspaceManager {
                     }
 
                     return Err(WorkspaceError::PartialCreation(format!(
-                        "Failed to create worktree for repo '{}': {}",
+                        "Failed to create symlink for repo '{}': {}",
                         input.repo.name, e
                     )));
                 }
@@ -369,67 +359,58 @@ impl WorkspaceManager {
         })
     }
 
-    /// Ensure all worktrees in a workspace exist (for cold restart scenarios)
+    /// Ensure all symlinks in a workspace exist and point to valid targets.
     pub async fn ensure_workspace_exists(
         workspace_dir: &Path,
         repos: &[RepoWorkspaceInput],
-        branch_name: &str,
+        _branch_name: &str,
     ) -> Result<(), WorkspaceError> {
         if repos.is_empty() {
             return Err(WorkspaceError::NoRepositories);
-        }
-
-        // Try legacy migration first (single repo projects only)
-        // Old layout had worktree directly at workspace_dir; new layout has it at workspace_dir/{repo_name}
-        if repos.len() == 1 && Self::migrate_legacy_worktree(workspace_dir, &repos[0].repo).await? {
-            return Ok(());
         }
 
         if !workspace_dir.exists() {
             tokio::fs::create_dir_all(workspace_dir).await?;
         }
 
-        let git = GitService::new();
-
         for input in repos {
             let repo = &input.repo;
-            let worktree_path = workspace_dir.join(&repo.name);
+            let link_path = workspace_dir.join(&repo.name);
 
-            debug!(
-                "Ensuring worktree exists for repo '{}' at {}",
-                repo.name,
-                worktree_path.display()
-            );
-
-            if git.check_branch_exists(&repo.path, branch_name)? {
-                WorktreeManager::ensure_worktree_exists(&repo.path, branch_name, &worktree_path)
-                    .await?;
+            // Check if symlink exists and points to the right place
+            let needs_creation = if link_path.symlink_metadata().is_ok() {
+                match tokio::fs::read_link(&link_path).await {
+                    Ok(target) => target != repo.path,
+                    Err(_) => true,
+                }
             } else {
-                info!(
-                    "Workspace branch '{}' missing in repo '{}'; creating from target branch '{}'",
-                    branch_name, repo.name, input.target_branch
+                true
+            };
+
+            if needs_creation {
+                debug!(
+                    "Recreating symlink for repo '{}': {} -> {}",
+                    repo.name,
+                    link_path.display(),
+                    repo.path.display()
                 );
-                WorktreeManager::create_worktree(
-                    &repo.path,
-                    branch_name,
-                    &worktree_path,
-                    &input.target_branch,
-                    true,
-                )
-                .await?;
+                create_repo_symlink(&repo.path, &link_path).await?;
             }
         }
 
         Ok(())
     }
 
-    /// Clean up all worktrees in a workspace
+    /// Clean up a workspace's symlink directory.
+    /// Safety: only deletes if directory contains only symlinks/config files.
     pub async fn cleanup_workspace(
         workspace_dir: &Path,
         repos: &[Repo],
     ) -> Result<(), WorkspaceError> {
         info!("Cleaning up workspace at {}", workspace_dir.display());
 
+        // WorktreeManager::batch_cleanup_worktrees is a no-op, but call it
+        // to maintain the same call flow for upstream compatibility
         let cleanup_data: Vec<WorktreeCleanup> = repos
             .iter()
             .map(|repo| {
@@ -437,18 +418,29 @@ impl WorkspaceManager {
                 WorktreeCleanup::new(worktree_path, Some(repo.path.clone()))
             })
             .collect();
-
         WorktreeManager::batch_cleanup_worktrees(&cleanup_data).await?;
 
-        // Remove the workspace directory itself
-        if workspace_dir.exists()
-            && let Err(e) = tokio::fs::remove_dir_all(workspace_dir).await
-        {
-            debug!(
-                "Could not remove workspace directory {}: {}",
-                workspace_dir.display(),
-                e
-            );
+        // Guard: only delete if workspace dir contains only symlinks
+        if workspace_dir.exists() {
+            let workspace_dir_owned = workspace_dir.to_path_buf();
+            let safe = tokio::task::spawn_blocking(move || is_safe_to_delete(&workspace_dir_owned))
+                .await
+                .unwrap_or(false);
+
+            if safe {
+                if let Err(e) = tokio::fs::remove_dir_all(workspace_dir).await {
+                    debug!(
+                        "Could not remove workspace directory {}: {}",
+                        workspace_dir.display(),
+                        e
+                    );
+                }
+            } else {
+                warn!(
+                    "Skipping deletion of workspace dir {} — contains non-symlink entries",
+                    workspace_dir.display()
+                );
+            }
         }
 
         Ok(())
@@ -459,79 +451,13 @@ impl WorkspaceManager {
         WorktreeManager::get_worktree_base_dir()
     }
 
-    /// Migrate a legacy single-worktree layout to the new workspace layout.
-    /// Old layout: workspace_dir IS the worktree
-    /// New layout: workspace_dir contains worktrees at workspace_dir/{repo_name}
-    ///
-    /// Returns Ok(true) if migration was performed, Ok(false) if no migration needed.
+    /// Legacy migration disabled in no-isolation fork.
+    /// No worktrees exist to migrate.
     pub async fn migrate_legacy_worktree(
-        workspace_dir: &Path,
-        repo: &Repo,
+        _workspace_dir: &Path,
+        _repo: &Repo,
     ) -> Result<bool, WorkspaceError> {
-        let expected_worktree_path = workspace_dir.join(&repo.name);
-
-        // Detect old-style: workspace_dir exists AND has .git file (worktree marker)
-        // AND expected new location doesn't exist
-        let git_file = workspace_dir.join(".git");
-        let is_old_style = workspace_dir.exists()
-            && git_file.exists()
-            && git_file.is_file() // .git file = worktree, .git dir = main repo
-            && !expected_worktree_path.exists();
-
-        if !is_old_style {
-            return Ok(false);
-        }
-
-        info!(
-            "Detected legacy worktree at {}, migrating to new layout",
-            workspace_dir.display()
-        );
-
-        // Move old worktree to temp location (can't move into subdirectory of itself)
-        let temp_name = format!(
-            "{}-migrating",
-            workspace_dir
-                .file_name()
-                .map(|n| n.to_string_lossy())
-                .unwrap_or_default()
-        );
-        let temp_path = workspace_dir.with_file_name(temp_name);
-
-        WorktreeManager::move_worktree(&repo.path, workspace_dir, &temp_path).await?;
-
-        // Create new workspace directory
-        tokio::fs::create_dir_all(workspace_dir).await?;
-
-        // Move worktree to final location using git worktree move
-        WorktreeManager::move_worktree(&repo.path, &temp_path, &expected_worktree_path).await?;
-
-        if temp_path.exists() {
-            let _ = tokio::fs::remove_dir_all(&temp_path).await;
-        }
-
-        info!(
-            "Successfully migrated legacy worktree to {}",
-            expected_worktree_path.display()
-        );
-
-        Ok(true)
-    }
-
-    /// Helper to cleanup worktrees during rollback
-    async fn cleanup_created_worktrees(worktrees: &[RepoWorktree]) {
-        for worktree in worktrees {
-            let cleanup = WorktreeCleanup::new(
-                worktree.worktree_path.clone(),
-                Some(worktree.source_repo_path.clone()),
-            );
-
-            if let Err(e) = WorktreeManager::cleanup_worktree(&cleanup).await {
-                error!(
-                    "Failed to cleanup worktree '{}' during rollback: {}",
-                    worktree.repo_name, e
-                );
-            }
-        }
+        Ok(false)
     }
 
     pub async fn cleanup_orphan_workspaces(&self) {
@@ -614,39 +540,116 @@ impl WorkspaceManager {
             workspace_dir.display()
         );
 
-        let entries = match std::fs::read_dir(workspace_dir) {
-            Ok(entries) => entries,
-            Err(e) => {
-                debug!(
-                    "Cannot read workspace directory {}, attempting direct removal: {}",
-                    workspace_dir.display(),
-                    e
+        // Guard: only delete if workspace dir is safe (contains only symlinks)
+        if workspace_dir.exists() {
+            let workspace_dir_owned = workspace_dir.to_path_buf();
+            let safe = tokio::task::spawn_blocking(move || is_safe_to_delete(&workspace_dir_owned))
+                .await
+                .unwrap_or(false);
+
+            if safe {
+                if let Err(e) = tokio::fs::remove_dir_all(workspace_dir).await {
+                    debug!(
+                        "Could not remove workspace directory {}: {}",
+                        workspace_dir.display(),
+                        e
+                    );
+                }
+            } else {
+                warn!(
+                    "Skipping deletion of orphaned workspace dir {} — contains non-symlink entries",
+                    workspace_dir.display()
                 );
-                return tokio::fs::remove_dir_all(workspace_dir)
-                    .await
-                    .map_err(WorkspaceError::Io);
             }
-        };
-
-        for entry in entries.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.is_dir()
-                && let Err(e) = WorktreeManager::cleanup_suspected_worktree(&path).await
-            {
-                warn!("Failed to cleanup suspected worktree: {}", e);
-            }
-        }
-
-        if workspace_dir.exists()
-            && let Err(e) = tokio::fs::remove_dir_all(workspace_dir).await
-        {
-            debug!(
-                "Could not remove workspace directory {}: {}",
-                workspace_dir.display(),
-                e
-            );
         }
 
         Ok(())
     }
+}
+
+/// Create a symlink from `link_path` to `repo_path`.
+/// On Unix: std::os::unix::fs::symlink
+/// On Windows: std::os::windows::fs::symlink_dir (requires Developer Mode)
+async fn create_repo_symlink(repo_path: &Path, link_path: &Path) -> Result<(), WorkspaceError> {
+    let repo_path = repo_path.to_path_buf();
+    let link_path = link_path.to_path_buf();
+
+    tokio::task::spawn_blocking(move || {
+        // Remove existing link/dir if present
+        if link_path.exists() || link_path.symlink_metadata().is_ok() {
+            if link_path.is_dir() && !link_path.symlink_metadata()
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false)
+            {
+                // Real directory — don't delete it
+                return Err(WorkspaceError::Io(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!("Real directory exists at {}, refusing to overwrite", link_path.display()),
+                )));
+            }
+            // Remove existing symlink
+            #[cfg(unix)]
+            std::fs::remove_file(&link_path)?;
+            #[cfg(windows)]
+            std::fs::remove_dir(&link_path)?;
+        }
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&repo_path, &link_path)?;
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_dir(&repo_path, &link_path)?;
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| WorkspaceError::Io(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        format!("Task join error: {e}"),
+    )))?
+}
+
+/// Remove a symlink (cross-platform).
+async fn remove_symlink(link_path: &Path) -> Result<(), std::io::Error> {
+    let link_path = link_path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        if link_path.symlink_metadata().is_ok() {
+            #[cfg(unix)]
+            std::fs::remove_file(&link_path)?;
+            #[cfg(windows)]
+            std::fs::remove_dir(&link_path)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{e}")))?
+}
+
+/// Check that a directory only contains symlinks (safe to delete).
+/// Returns false if any entry is a real file or directory.
+fn is_safe_to_delete(dir: &Path) -> bool {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+
+    for entry in entries.flatten() {
+        let metadata = match entry.path().symlink_metadata() {
+            Ok(m) => m,
+            Err(_) => return false,
+        };
+        // Allow symlinks and regular files (like CLAUDE.md config files written to workspace dir)
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            // Real subdirectory — not safe
+            tracing::warn!(
+                "Refusing to delete workspace dir: found real directory at {}",
+                entry.path().display()
+            );
+            return false;
+        }
+    }
+    true
 }

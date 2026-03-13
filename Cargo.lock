@@ -7908,10 +7908,8 @@ dependencies = [
 name = "worktree-manager"
 version = "0.1.29"
 dependencies = [
- "dunce",
  "git",
  "git2",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

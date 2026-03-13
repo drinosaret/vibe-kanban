@@ -45,52 +45,71 @@ pids
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
+# Coverage
 coverage/
 *.lcov
-
-# nyc test coverage
 .nyc_output
 
 # ESLint cache
 .eslintcache
 
-# Optional npm cache directory
+# npm cache
 .npm
 
-# Optional eslint cache
-.eslintcache
-
-# Storybook build outputs
+# Storybook
 .out
 .storybook-out
 
-.env
+# Packages
 packages/**/dist
 
+# NPX CLI
 build-npm-package-codesign.sh
-
 npx-cli/dist
 npx-cli/vibe-kanban-*
 vibe-kanban-*.tgz
 
-# Development ports file
+# Development
 .dev-ports.json
-
 dev_assets
 /packages/web/.env.sentry-build-plugin
 .ssh
 
+# Cloud
 vibe-kanban-cloud/
 
+# VCS
 .jj
 .sisyphus/
 
 # Vite temp files
 *.timestamp-*.mjs
 
-# Mobile testing (per-developer, do not commit)
+# Mobile testing
 *.ts.net.crt
 *.ts.net.key
 Caddyfile
 Caddyfile.dev
+
+# Local data
+/data/
+.vibe-images/
+
+# TypeScript
+*.tsbuildinfo
+
+# Archive & legacy
+/archive/
+/kanban-app-temp/
+
+# Reference projects
+/reference/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Claude
+.claude/
+
+# Superpowers planning docs
+docs/superpowers/

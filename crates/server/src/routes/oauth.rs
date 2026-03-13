@@ -260,6 +260,22 @@ async fn status(
 ) -> Result<ResponseJson<ApiResponse<StatusResponse>>, ApiError> {
     use api_types::LoginStatus;
 
+    // If no remote client is configured, return a local-only logged-in status
+    // so the frontend doesn't redirect to OAuth sign-in.
+    if deployment.remote_client().is_err() {
+        let local_profile = api_types::ProfileResponse {
+            user_id: uuid::Uuid::nil(),
+            username: Some("local".to_string()),
+            email: "local@localhost".to_string(),
+            providers: vec![],
+        };
+        return Ok(ResponseJson(ApiResponse::success(StatusResponse {
+            logged_in: true,
+            profile: Some(local_profile),
+            degraded: None,
+        })));
+    }
+
     match deployment.get_login_status().await {
         LoginStatus::LoggedOut => Ok(ResponseJson(ApiResponse::success(StatusResponse {
             logged_in: false,

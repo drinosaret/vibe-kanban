@@ -25,6 +25,8 @@ import {
   bulkUpdateIssues,
   type BulkUpdateIssueItem,
 } from '@/shared/lib/remoteApi';
+import { localIssuesApi } from '@/shared/lib/localApi';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { PlusIcon, DotsThreeIcon } from '@phosphor-icons/react';
 import { Actions } from '@/shared/actions';
 import {
@@ -113,6 +115,7 @@ function LoadingState() {
  * Must be rendered within both OrgProvider and ProjectProvider.
  */
 export function KanbanContainer() {
+  const isLocalOnly = !getRemoteApiUrl();
   const isMobile = useIsMobile();
   const { t } = useTranslation('common');
   const appNavigation = useAppNavigation();
@@ -688,18 +691,28 @@ export function KanbanContainer() {
 
       // Perform bulk update
       isSyncingRef.current = true;
-      bulkUpdateIssues(updates)
+      const bulkUpdateFn = isLocalOnly
+        ? localIssuesApi.bulkUpdate(
+            updates.map((u) => ({
+              id: u.id,
+              changes: Object.fromEntries(
+                Object.entries(u.changes).filter(([, v]) => v !== undefined)
+              ),
+            }))
+          )
+        : bulkUpdateIssues(updates);
+      bulkUpdateFn
         .catch((err) => {
           console.error('Failed to bulk update sort order:', err);
         })
         .finally(() => {
-          // Delay clearing flag to let Electric sync complete
+          // Delay clearing flag to let sync complete
           setTimeout(() => {
             isSyncingRef.current = false;
           }, 500);
         });
     },
-    [kanbanFilters.sortField, calculateSortOrder]
+    [kanbanFilters.sortField, calculateSortOrder, isLocalOnly]
   );
 
   const handleCardClick = useCallback(

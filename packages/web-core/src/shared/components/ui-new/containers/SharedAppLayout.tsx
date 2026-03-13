@@ -32,7 +32,13 @@ import {
   CreateRemoteProjectDialog,
   type CreateRemoteProjectResult,
 } from '@/shared/dialogs/org/CreateRemoteProjectDialog';
+import {
+  CreateLocalProjectDialog,
+  type CreateLocalProjectResult,
+} from '@/shared/dialogs/org/CreateLocalProjectDialog';
 import { OAuthDialog } from '@/shared/dialogs/global/OAuthDialog';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
+import { useLocalProjects } from '@/shared/hooks/useLocalProjects';
 import { CommandBarDialog } from '@/shared/dialogs/command-bar/CommandBarDialog';
 import { useCommandBarShortcut } from '@/shared/hooks/useCommandBarShortcut';
 import { useWorkspaceSidebarPreviewController } from '@/shared/hooks/useWorkspaceSidebarPreviewController';
@@ -51,6 +57,7 @@ export function SharedAppLayout() {
   const currentDestination = useCurrentAppDestination();
   const isMigrateRoute = currentDestination?.kind === 'migrate';
   const isMobile = useIsMobile();
+  const isLocalOnly = !getRemoteApiUrl();
   const mobileFontScale = useUiPreferencesStore((s) => s.mobileFontScale);
   const isLeftSidebarVisible = useUiPreferencesStore(
     (s) => s.isLeftSidebarVisible
@@ -110,14 +117,20 @@ export function SharedAppLayout() {
     () => ({ organization_id: selectedOrgId || '' }),
     [selectedOrgId]
   );
-  const {
-    data: orgProjects = [],
-    isLoading,
-    updateMany: updateManyProjects,
-  } = useShape(PROJECTS_SHAPE, projectParams, {
-    enabled: isSignedIn && !!selectedOrgId,
+  const remoteProjectsResult = useShape(PROJECTS_SHAPE, projectParams, {
+    enabled: !isLocalOnly && isSignedIn && !!selectedOrgId,
     mutation: PROJECT_MUTATION,
   });
+  const localProjectsResult = useLocalProjects(
+    isLocalOnly ? (selectedOrgId || '') : ''
+  );
+  const orgProjects = isLocalOnly
+    ? (localProjectsResult.data ?? [])
+    : (remoteProjectsResult.data ?? []);
+  const isLoading = isLocalOnly
+    ? localProjectsResult.isLoading
+    : remoteProjectsResult.isLoading;
+  const updateManyProjects = remoteProjectsResult.updateMany;
   const sortedProjects = useMemo(
     () => sortProjectsByOrder(orgProjects),
     [orgProjects]
@@ -248,16 +261,25 @@ export function SharedAppLayout() {
     if (!selectedOrgId) return;
 
     try {
-      const result: CreateRemoteProjectResult =
-        await CreateRemoteProjectDialog.show({ organizationId: selectedOrgId });
+      if (isLocalOnly) {
+        const result: CreateLocalProjectResult =
+          await CreateLocalProjectDialog.show({ organizationId: selectedOrgId });
 
-      if (result.action === 'created' && result.project) {
-        appNavigation.goToProject(result.project.id);
+        if (result.action === 'created' && result.project) {
+          appNavigation.goToProject(result.project.id);
+        }
+      } else {
+        const result: CreateRemoteProjectResult =
+          await CreateRemoteProjectDialog.show({ organizationId: selectedOrgId });
+
+        if (result.action === 'created' && result.project) {
+          appNavigation.goToProject(result.project.id);
+        }
       }
     } catch {
       // Dialog cancelled
     }
-  }, [selectedOrgId, appNavigation]);
+  }, [selectedOrgId, appNavigation, isLocalOnly]);
 
   const handleSignIn = useCallback(async () => {
     try {
@@ -302,7 +324,7 @@ export function SharedAppLayout() {
             isSavingProjectOrder={isSavingProjectOrder}
             isWorkspacesActive={isWorkspacesActive}
             activeProjectId={activeProjectId}
-            isSignedIn={isSignedIn}
+            isSignedIn={isLocalOnly || isSignedIn}
             isLoadingProjects={isLoading}
             onSignIn={handleSignIn}
             onMigrate={handleMigrate}
@@ -363,7 +385,7 @@ export function SharedAppLayout() {
 
             {/* Project list */}
             <div className="flex-1 overflow-y-auto p-2">
-              {isSignedIn ? (
+              {(isLocalOnly || isSignedIn) ? (
                 orderedProjects.map((project) => (
                   <button
                     type="button"
@@ -426,7 +448,7 @@ export function SharedAppLayout() {
             </div>
 
             {/* Create Project button */}
-            {isSignedIn && (
+            {(isLocalOnly || isSignedIn) && (
               <div className="p-3 border-t border-border">
                 <button
                   type="button"
