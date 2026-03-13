@@ -1,4 +1,3 @@
-mod analytics;
 mod app;
 pub mod attachments;
 mod auth;

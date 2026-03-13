@@ -7,12 +7,10 @@ import {
   ArrowDownIcon,
   CrosshairIcon,
   ArrowSquareOutIcon,
-  GitMergeIcon,
   CheckCircleIcon,
   SpinnerGapIcon,
   WarningCircleIcon,
   DotsThreeIcon,
-  LinkIcon,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -31,15 +29,7 @@ export type RepoAction =
   | 'rebase'
   | 'push';
 
-const repoActionOptions: SplitButtonOption<RepoAction>[] = [
-  {
-    value: 'pull-request',
-    label: 'Open pull request',
-    icon: GitPullRequestIcon,
-  },
-  { value: 'link-pr', label: 'Link pull request', icon: LinkIcon },
-  { value: 'merge', label: 'Merge', icon: GitMergeIcon },
-];
+const repoActionOptions: SplitButtonOption<RepoAction>[] = [];
 
 interface RepoCardProps {
   repoId: string;

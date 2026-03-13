@@ -1,19 +1,11 @@
 import { useCallback, useState } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import type { OrganizationWithRole } from "shared/types";
 import { AppBarUserPopover } from "@vibe/ui/components/AppBarUserPopover";
 import { logout } from "@remote/shared/lib/api";
 import { SettingsDialog } from "@/shared/dialogs/settings/SettingsDialog";
 import { useAuth } from "@/shared/hooks/auth/useAuth";
 import { useUserSystem } from "@/shared/hooks/useUserSystem";
 import { REMOTE_SETTINGS_SECTIONS } from "@remote/shared/constants/settings";
-
-interface RemoteAppBarUserPopoverContainerProps {
-  organizations: OrganizationWithRole[];
-  selectedOrgId: string;
-  onOrgSelect: (orgId: string) => void;
-  onCreateOrg: () => void;
-}
 
 function toNextPath({
   pathname,
@@ -23,12 +15,7 @@ function toNextPath({
   return `${pathname}${searchStr}${hash}`;
 }
 
-export function RemoteAppBarUserPopoverContainer({
-  organizations,
-  selectedOrgId,
-  onOrgSelect,
-  onCreateOrg,
-}: RemoteAppBarUserPopoverContainerProps) {
+export function RemoteAppBarUserPopoverContainer() {
   const { isSignedIn } = useAuth();
   const { loginStatus } = useUserSystem();
 
@@ -64,18 +51,6 @@ export function RemoteAppBarUserPopoverContainer({
     });
   }, [navigate]);
 
-  const handleOrgSettings = useCallback(
-    async (orgId: string) => {
-      onOrgSelect(orgId);
-      await SettingsDialog.show({
-        initialSection: "organizations",
-        initialState: { organizationId: orgId },
-        sections: REMOTE_SETTINGS_SECTIONS,
-      });
-    },
-    [onOrgSelect],
-  );
-
   const handleSettings = useCallback(async () => {
     setOpen(false);
     await SettingsDialog.show({
@@ -88,15 +63,8 @@ export function RemoteAppBarUserPopoverContainer({
       isSignedIn={isSignedIn}
       avatarUrl={avatarUrl}
       avatarError={avatarError}
-      organizations={organizations}
-      selectedOrgId={selectedOrgId}
       open={open}
       onOpenChange={setOpen}
-      onOrgSelect={onOrgSelect}
-      onCreateOrg={onCreateOrg}
-      onOrgSettings={(orgId) => {
-        void handleOrgSettings(orgId);
-      }}
       onSignIn={handleSignIn}
       onLogout={() => {
         void handleLogout();

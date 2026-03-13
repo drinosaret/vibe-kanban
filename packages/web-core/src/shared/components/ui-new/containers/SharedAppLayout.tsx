@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DropResult } from '@hello-pangea/dnd';
 import { Outlet } from '@tanstack/react-router';
-import { siDiscord, siGithub } from 'simple-icons';
 import { XIcon, PlusIcon, LayoutIcon, KanbanIcon } from '@phosphor-icons/react';
 import { SyncErrorProvider } from '@/shared/providers/SyncErrorProvider';
 import { useIsMobile } from '@/shared/hooks/useIsMobile';
@@ -15,8 +14,6 @@ import { AppBarUserPopoverContainer } from './AppBarUserPopoverContainer';
 import { useUserOrganizations } from '@/shared/hooks/useUserOrganizations';
 import { useOrganizationStore } from '@/shared/stores/useOrganizationStore';
 import { useAuth } from '@/shared/hooks/auth/useAuth';
-import { useDiscordOnlineCount } from '@/shared/hooks/useDiscordOnlineCount';
-import { useGitHubStars } from '@/shared/hooks/useGitHubStars';
 import { useUserSystem } from '@/shared/hooks/useUserSystem';
 import { useAppNavigation } from '@/shared/hooks/useAppNavigation';
 import { useCurrentAppDestination } from '@/shared/hooks/useCurrentAppDestination';
@@ -24,10 +21,6 @@ import {
   getProjectDestination,
   isWorkspacesDestination,
 } from '@/shared/lib/routes/appNavigation';
-import {
-  CreateOrganizationDialog,
-  type CreateOrganizationResult,
-} from '@/shared/dialogs/org/CreateOrganizationDialog';
 import {
   CreateRemoteProjectDialog,
   type CreateRemoteProjectResult,
@@ -38,7 +31,9 @@ import {
 } from '@/shared/dialogs/org/CreateLocalProjectDialog';
 import { OAuthDialog } from '@/shared/dialogs/global/OAuthDialog';
 import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
-import { useLocalProjects } from '@/shared/hooks/useLocalProjects';
+import { useLocalProjects, localProjectKeys } from '@/shared/hooks/useLocalProjects';
+import { localProjectsApi } from '@/shared/lib/localApi';
+import { useQueryClient } from '@tanstack/react-query';
 import { CommandBarDialog } from '@/shared/dialogs/command-bar/CommandBarDialog';
 import { useCommandBarShortcut } from '@/shared/hooks/useCommandBarShortcut';
 import { useWorkspaceSidebarPreviewController } from '@/shared/hooks/useWorkspaceSidebarPreviewController';
@@ -53,6 +48,7 @@ import { WorkspacesSidebarContainer } from '@/pages/workspaces/WorkspacesSidebar
 import { WorkspacesSidebarReopenTag } from '@vibe/ui/components/WorkspacesSidebar';
 
 export function SharedAppLayout() {
+  const queryClient = useQueryClient();
   const appNavigation = useAppNavigation();
   const currentDestination = useCurrentAppDestination();
   const isMigrateRoute = currentDestination?.kind === 'migrate';
@@ -64,8 +60,6 @@ export function SharedAppLayout() {
   );
   const { isSignedIn } = useAuth();
   const { appVersion } = useUserSystem();
-  const { data: onlineCount } = useDiscordOnlineCount();
-  const { data: starCount } = useGitHubStars();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isAppBarHovered, setIsAppBarHovered] = useState(false);
 
@@ -228,12 +222,21 @@ export function SharedAppLayout() {
       setIsSavingProjectOrder(true);
 
       try {
-        await updateManyProjects(
-          reordered.map((project, index) => ({
-            id: project.id,
-            changes: { sort_order: index },
-          }))
-        ).persisted;
+        if (isLocalOnly) {
+          await Promise.all(
+            reordered.map((project, index) =>
+              localProjectsApi.update(project.id, { sort_order: index })
+            )
+          );
+          await queryClient.invalidateQueries({ queryKey: localProjectKeys.all });
+        } else {
+          await updateManyProjects(
+            reordered.map((project, index) => ({
+              id: project.id,
+              changes: { sort_order: index },
+            }))
+          ).persisted;
+        }
       } catch (error) {
         console.error('Failed to reorder projects:', error);
         setOrderedProjects(previousOrder);
@@ -241,21 +244,8 @@ export function SharedAppLayout() {
         setIsSavingProjectOrder(false);
       }
     },
-    [isSavingProjectOrder, orderedProjects, updateManyProjects]
+    [isSavingProjectOrder, orderedProjects, updateManyProjects, isLocalOnly, queryClient]
   );
-
-  const handleCreateOrg = useCallback(async () => {
-    try {
-      const result: CreateOrganizationResult =
-        await CreateOrganizationDialog.show();
-
-      if (result.action === 'created' && result.organizationId) {
-        setSelectedOrgId(result.organizationId);
-      }
-    } catch {
-      // Dialog cancelled
-    }
-  }, [setSelectedOrgId]);
 
   const handleCreateProject = useCallback(async () => {
     if (!selectedOrgId) return;
@@ -266,6 +256,7 @@ export function SharedAppLayout() {
           await CreateLocalProjectDialog.show({ organizationId: selectedOrgId });
 
         if (result.action === 'created' && result.project) {
+          await queryClient.invalidateQueries({ queryKey: localProjectKeys.all });
           appNavigation.goToProject(result.project.id);
         }
       } else {
@@ -279,7 +270,7 @@ export function SharedAppLayout() {
     } catch {
       // Dialog cancelled
     }
-  }, [selectedOrgId, appNavigation, isLocalOnly]);
+  }, [selectedOrgId, appNavigation, isLocalOnly, queryClient]);
 
   const handleSignIn = useCallback(async () => {
     try {
@@ -331,18 +322,9 @@ export function SharedAppLayout() {
             onHoverStart={() => setIsAppBarHovered(true)}
             onHoverEnd={() => setIsAppBarHovered(false)}
             userPopover={
-              <AppBarUserPopoverContainer
-                organizations={organizations}
-                selectedOrgId={selectedOrgId ?? ''}
-                onOrgSelect={setSelectedOrgId}
-                onCreateOrg={handleCreateOrg}
-              />
+              <AppBarUserPopoverContainer />
             }
-            starCount={starCount}
-            onlineCount={onlineCount}
             appVersion={appVersion}
-            githubIconPath={siGithub.path}
-            discordIconPath={siDiscord.path}
           />
         )}
 
@@ -468,8 +450,6 @@ export function SharedAppLayout() {
         <div className="flex flex-col flex-1 min-w-0">
           <NavbarContainer
             mobileMode={isMobile}
-            onCreateOrg={handleCreateOrg}
-            onOrgSelect={setSelectedOrgId}
             onOpenDrawer={() => setIsDrawerOpen(true)}
           />
           <div className="relative flex-1 min-h-0">

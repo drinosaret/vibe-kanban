@@ -59,9 +59,7 @@ export function IssueWorkspacesSection({
                 key={workspace.id}
                 workspace={workspace}
                 onClick={
-                  onWorkspaceClick &&
-                  localWorkspaceId &&
-                  workspace.isOwnedByCurrentUser
+                  onWorkspaceClick && localWorkspaceId
                     ? () => onWorkspaceClick(localWorkspaceId)
                     : undefined
                 }
@@ -71,9 +69,7 @@ export function IssueWorkspacesSection({
                     : undefined
                 }
                 onDelete={
-                  onDeleteWorkspace &&
-                  localWorkspaceId &&
-                  workspace.isOwnedByCurrentUser
+                  onDeleteWorkspace && localWorkspaceId
                     ? () => onDeleteWorkspace(localWorkspaceId)
                     : undefined
                 }

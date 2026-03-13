@@ -211,14 +211,6 @@
           "enterLabel": "Entrée (Maj+Entrée pour nouvelle ligne)"
         }
       },
-      "privacy": {
-        "title": "Confidentialité",
-        "description": "Aidez à améliorer Vibe-Kanban en partageant des données d'utilisation anonymes.",
-        "telemetry": {
-          "label": "Activer la télémétrie",
-          "helper": "Active le suivi anonyme des événements d'utilisation pour aider à améliorer l'application. Aucun prompt ou information de projet n'est collecté."
-        }
-      },
       "taskTemplates": {
         "title": "Tags",
         "description": "Créez des extraits de texte réutilisables pouvant être insérés dans les descriptions de tâches en utilisant @nom_du_tag."

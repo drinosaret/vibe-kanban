@@ -115,18 +115,6 @@ async fn create_issue_comment(
         db_error(error, "failed to create issue comment")
     })?;
 
-    if let Some(analytics) = state.analytics() {
-        analytics.track(
-            ctx.user.id,
-            "issue_comment_created",
-            serde_json::json!({
-                "comment_id": response.data.id,
-                "issue_id": response.data.issue_id,
-                "organization_id": organization_id,
-                "is_reply": is_reply,
-            }),
-        );
-    }
 
     Ok(Json(response))
 }

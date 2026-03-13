@@ -3,7 +3,6 @@ use std::sync::Arc;
 use sqlx::PgPool;
 
 use crate::{
-    analytics::AnalyticsService,
     auth::{JwtService, OAuthHandoffService, OAuthTokenValidator, ProviderRegistry},
     azure_blob::AzureBlobService,
     billing::BillingService,
@@ -27,7 +26,6 @@ pub struct AppState {
     azure_blob: Option<AzureBlobService>,
     github_app: Option<Arc<GitHubAppService>>,
     billing: BillingService,
-    analytics: Option<AnalyticsService>,
 }
 
 impl AppState {
@@ -45,7 +43,6 @@ impl AppState {
         azure_blob: Option<AzureBlobService>,
         github_app: Option<Arc<GitHubAppService>>,
         billing: BillingService,
-        analytics: Option<AnalyticsService>,
     ) -> Self {
         Self {
             pool,
@@ -60,7 +57,6 @@ impl AppState {
             azure_blob,
             github_app,
             billing,
-            analytics,
         }
     }
 
@@ -102,9 +98,5 @@ impl AppState {
 
     pub fn billing(&self) -> &BillingService {
         &self.billing
-    }
-
-    pub fn analytics(&self) -> Option<&AnalyticsService> {
-        self.analytics.as_ref()
     }
 }

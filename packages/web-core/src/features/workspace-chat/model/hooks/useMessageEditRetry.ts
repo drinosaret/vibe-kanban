@@ -58,8 +58,8 @@ export function useMessageEditRetry(
         prompt: message,
         executor_config: executorConfig,
         retry_process_id: executionProcessId,
-        force_when_dirty: modalResult.forceWhenDirty ?? false,
-        perform_git_reset: modalResult.performGitReset ?? true,
+        force_when_dirty: false,
+        perform_git_reset: false,
       });
     },
     onSuccess: () => {

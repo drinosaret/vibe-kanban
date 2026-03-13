@@ -35,11 +35,9 @@ import {
   ArrowUpIcon,
   HighlighterIcon,
   ListIcon,
-  MegaphoneIcon,
   QuestionIcon,
   ArrowsLeftRightIcon,
   ArrowFatLineUpIcon,
-  UsersIcon,
   TreeStructureIcon,
   LinkIcon,
   ArrowBendUpRightIcon,
@@ -68,7 +66,6 @@ import { CreatePRDialog } from '@/shared/dialogs/command-bar/CreatePRDialog';
 import { getIdeName } from '@/shared/lib/ideName';
 import { EditorSelectionDialog } from '@/shared/dialogs/command-bar/EditorSelectionDialog';
 import { StartReviewDialog } from '@/shared/dialogs/command-bar/StartReviewDialog';
-import posthog from 'posthog-js';
 import { WorkspacesGuideDialog } from '@/shared/dialogs/shared/WorkspacesGuideDialog';
 import { SettingsDialog } from '@/shared/dialogs/settings/SettingsDialog';
 import { CreateWorkspaceFromPrDialog } from '@/shared/dialogs/command-bar/CreateWorkspaceFromPrDialog';
@@ -287,8 +284,6 @@ export const Actions = {
     variant: 'destructive',
     requiresTarget: ActionTargetType.WORKSPACE,
     execute: async (ctx, workspaceId) => {
-      const workspace = await getWorkspace(ctx.queryClient, workspaceId);
-
       // Check if workspace is linked to a remote issue
       const remoteWs = ctx.remoteWorkspaces.find(
         (w) => w.local_workspace_id === workspaceId
@@ -296,16 +291,7 @@ export const Actions = {
       const linkedIssueSimpleId = remoteWs?.issue_id
         ? ctx.projectMutations?.getIssue(remoteWs.issue_id)?.simple_id
         : undefined;
-      const branchStatus = await workspacesApi.getBranchStatus(workspaceId);
-      const hasOpenPR = branchStatus.some((repoStatus) =>
-        repoStatus.merges?.some(
-          (m: Merge) => m.type === 'pr' && m.pr_info.status === 'open'
-        )
-      );
-
       const result = await DeleteWorkspaceDialog.show({
-        branchName: workspace.branch,
-        hasOpenPR,
         isLinkedToIssue: Boolean(remoteWs?.issue_id),
         linkedIssueSimpleId,
       });
@@ -476,16 +462,6 @@ export const Actions = {
       ctx.appNavigation.goToWorkspaces();
     },
   } satisfies GlobalActionDefinition,
-
-  Feedback: {
-    id: 'feedback',
-    label: 'Give Feedback',
-    icon: MegaphoneIcon,
-    requiresTarget: ActionTargetType.NONE,
-    execute: () => {
-      posthog.displaySurvey('019bb6e8-3d36-0000-1806-7330cd3c727e');
-    },
-  },
 
   WorkspacesGuide: {
     id: 'workspaces-guide',
@@ -913,6 +889,10 @@ export const Actions = {
           variant: 'info',
         });
       } else if (!result.success) {
+        const errorType = (result.error as { type?: string } | undefined)?.type;
+        if (errorType === 'no_remotes_configured') {
+          throw new Error('No git remotes configured for this repository. Add a remote to link pull requests.');
+        }
         throw new Error(result.message || 'Failed to attach PR');
       }
     },
@@ -1289,33 +1269,6 @@ export const Actions = {
     },
   } satisfies GlobalActionDefinition,
 
-  ChangeAssignees: {
-    id: 'change-assignees',
-    label: 'Change Assignees',
-    icon: UsersIcon,
-    shortcut: 'I A',
-    requiresTarget: ActionTargetType.ISSUE,
-    isVisible: (ctx) =>
-      ctx.layoutMode === 'kanban' && ctx.hasSelectedKanbanIssue,
-    execute: async (ctx, projectId, issueIds) => {
-      await ctx.openAssigneeSelection(projectId, issueIds, false);
-    },
-  } satisfies IssueActionDefinition,
-
-  ChangeNewIssueAssignees: {
-    id: 'change-new-issue-assignees',
-    label: 'Change Assignees',
-    icon: UsersIcon,
-    shortcut: 'I A',
-    requiresTarget: ActionTargetType.NONE,
-    isVisible: (ctx) => ctx.layoutMode === 'kanban' && ctx.isCreatingIssue,
-    execute: async (ctx) => {
-      // Opens assignee selection for the issue being created
-      // ProjectId will be resolved from route params inside the dialog
-      await ctx.openAssigneeSelection('', [], true);
-    },
-  } satisfies GlobalActionDefinition,
-
   MakeSubIssueOf: {
     id: 'make-sub-issue-of',
     label: 'Make Sub-issue of',
@@ -1541,7 +1494,6 @@ export const NavbarActionGroups = {
     Actions.ToggleRightSidebar,
     NavbarDivider,
     Actions.OpenCommandBar,
-    Actions.Feedback,
     Actions.WorkspacesGuide,
     Actions.ProjectsGuide,
     Actions.Settings,

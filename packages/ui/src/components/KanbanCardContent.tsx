@@ -276,9 +276,9 @@ export function KanbanCardContent<TTag extends KanbanTag = KanbanTag>({
           >
             <KanbanAssignee assignees={assignees} />
           </button>
-        ) : (
+        ) : assignees.length > 0 ? (
           <KanbanAssignee assignees={assignees} />
-        )}
+        ) : null}
       </div>
 
       {/* Row 5: Tags, PRs, Relationships (own row to prevent overflow) */}

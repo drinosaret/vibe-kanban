@@ -1,7 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { Outlet, createRootRoute, useLocation } from '@tanstack/react-router';
 import { I18nextProvider } from 'react-i18next';
-import { usePostHog } from 'posthog-js/react';
 import { Provider as NiceModalProvider } from '@ebay/nice-modal-react';
 import { ThemeMode } from 'shared/types';
 import i18n from '@/i18n';
@@ -31,24 +30,10 @@ function ExecutionProcessesProviderWrapper({
 }
 
 function RootRouteComponent() {
-  const { config, analyticsUserId, updateAndSaveConfig } = useUserSystem();
-  const posthog = usePostHog();
+  const { config, updateAndSaveConfig } = useUserSystem();
   const location = useLocation();
 
   useUiPreferencesScratch();
-
-  useEffect(() => {
-    if (!posthog || !analyticsUserId) return;
-
-    if (config?.analytics_enabled) {
-      posthog.opt_in_capturing();
-      posthog.identify(analyticsUserId);
-      console.log('[Analytics] Analytics enabled and user identified');
-    } else {
-      posthog.opt_out_capturing();
-      console.log('[Analytics] Analytics disabled by user preference');
-    }
-  }, [config?.analytics_enabled, analyticsUserId, posthog]);
 
   useEffect(() => {
     if (!config || !config.remote_onboarding_acknowledged) return;

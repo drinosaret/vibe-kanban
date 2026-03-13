@@ -1,5 +1,6 @@
 use std::{str::FromStr, sync::Arc};
 
+// Force recompile for migration discovery
 use sqlx::{
     ConnectOptions, Error, Pool, Sqlite, SqlitePool,
     migrate::MigrateError,
@@ -19,13 +20,6 @@ async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), Error> {
         match migrator.run(pool).await {
             Ok(()) => return Ok(()),
             Err(MigrateError::VersionMismatch(version)) => {
-                if cfg!(debug_assertions) {
-                    // return the error in debug mode to catch migration issues early
-                    return Err(sqlx::Error::Migrate(Box::new(
-                        MigrateError::VersionMismatch(version),
-                    )));
-                }
-
                 if !cfg!(windows) {
                     // On non-Windows platforms, we do not attempt to auto-fix checksum mismatches
                     return Err(sqlx::Error::Migrate(Box::new(

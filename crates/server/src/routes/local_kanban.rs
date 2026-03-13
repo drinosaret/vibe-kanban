@@ -5,8 +5,10 @@ use axum::{
     routing::get,
 };
 use db::models::local_kanban::{
-    CreateLocalIssue, CreateLocalProject, CreateLocalProjectStatus, CreateLocalTag, LocalIssue,
-    LocalIssueTag, LocalProject, LocalProjectStatus, LocalTag, SetIssueTags, UpdateLocalIssue,
+    CreateLocalIssue, CreateLocalIssueComment, CreateLocalIssueRelationship, CreateLocalProject,
+    CreateLocalProjectStatus, CreateLocalTag, CreateLocalWorkspaceIssue, LocalIssue,
+    LocalIssueComment, LocalIssueRelationship, LocalIssueTag, LocalProject, LocalProjectStatus,
+    LocalTag, LocalWorkspaceIssue, SetIssueTags, UpdateLocalIssue, UpdateLocalIssueComment,
     UpdateLocalProject, UpdateLocalProjectStatus,
 };
 use deployment::Deployment;
@@ -198,6 +200,14 @@ async fn delete_tag(
 
 // ── Issue tag routes ────────────────────────────────────────────────────────
 
+async fn list_issue_tags_for_project(
+    State(deployment): State<DeploymentImpl>,
+    Path(project_id): Path<String>,
+) -> Result<ResponseJson<ApiResponse<Vec<LocalIssueTag>>>, ApiError> {
+    let tags = LocalIssueTag::find_all_by_project(&deployment.db().pool, &project_id).await?;
+    Ok(ResponseJson(ApiResponse::success(tags)))
+}
+
 async fn set_issue_tags(
     State(deployment): State<DeploymentImpl>,
     Path(issue_id): Path<String>,
@@ -206,6 +216,94 @@ async fn set_issue_tags(
     let tags =
         LocalIssueTag::set_tags(&deployment.db().pool, &issue_id, &payload.tag_ids).await?;
     Ok(ResponseJson(ApiResponse::success(tags)))
+}
+
+// ── Issue relationship routes ───────────────────────────────────────────────
+
+async fn list_issue_relationships_for_project(
+    State(deployment): State<DeploymentImpl>,
+    Path(project_id): Path<String>,
+) -> Result<ResponseJson<ApiResponse<Vec<LocalIssueRelationship>>>, ApiError> {
+    let rels = LocalIssueRelationship::find_all_by_project(&deployment.db().pool, &project_id).await?;
+    Ok(ResponseJson(ApiResponse::success(rels)))
+}
+
+async fn create_issue_relationship(
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<CreateLocalIssueRelationship>,
+) -> Result<ResponseJson<ApiResponse<LocalIssueRelationship>>, ApiError> {
+    let rel = LocalIssueRelationship::create(&deployment.db().pool, &payload).await?;
+    Ok(ResponseJson(ApiResponse::success(rel)))
+}
+
+async fn delete_issue_relationship(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    LocalIssueRelationship::delete(&deployment.db().pool, &id).await?;
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
+// ── Issue comment routes ───────────────────────────────────────────────────
+
+async fn list_issue_comments(
+    State(deployment): State<DeploymentImpl>,
+    Path(issue_id): Path<String>,
+) -> Result<ResponseJson<ApiResponse<Vec<LocalIssueComment>>>, ApiError> {
+    let comments = LocalIssueComment::find_all_by_issue(&deployment.db().pool, &issue_id).await?;
+    Ok(ResponseJson(ApiResponse::success(comments)))
+}
+
+async fn create_issue_comment(
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<CreateLocalIssueComment>,
+) -> Result<ResponseJson<ApiResponse<LocalIssueComment>>, ApiError> {
+    let comment = LocalIssueComment::create(&deployment.db().pool, &payload).await?;
+    Ok(ResponseJson(ApiResponse::success(comment)))
+}
+
+async fn update_issue_comment(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+    Json(payload): Json<UpdateLocalIssueComment>,
+) -> Result<ResponseJson<ApiResponse<LocalIssueComment>>, ApiError> {
+    let comment = LocalIssueComment::update(&deployment.db().pool, &id, &payload).await?;
+    Ok(ResponseJson(ApiResponse::success(comment)))
+}
+
+async fn delete_issue_comment(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<String>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    LocalIssueComment::delete(&deployment.db().pool, &id).await?;
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
+// ── Workspace issue link routes ─────────────────────────────────────────────
+
+async fn list_workspace_issues(
+    State(deployment): State<DeploymentImpl>,
+    Path(project_id): Path<String>,
+) -> Result<ResponseJson<ApiResponse<Vec<LocalWorkspaceIssue>>>, ApiError> {
+    let links =
+        LocalWorkspaceIssue::find_all_by_project(&deployment.db().pool, &project_id).await?;
+    Ok(ResponseJson(ApiResponse::success(links)))
+}
+
+async fn create_workspace_issue(
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<CreateLocalWorkspaceIssue>,
+) -> Result<ResponseJson<ApiResponse<LocalWorkspaceIssue>>, ApiError> {
+    let link = LocalWorkspaceIssue::create(&deployment.db().pool, &payload).await?;
+    Ok(ResponseJson(ApiResponse::success(link)))
+}
+
+async fn delete_workspace_issue(
+    State(deployment): State<DeploymentImpl>,
+    Path(workspace_id): Path<String>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    LocalWorkspaceIssue::delete_by_workspace(&deployment.db().pool, &workspace_id).await?;
+    Ok(ResponseJson(ApiResponse::success(())))
 }
 
 // ── Router ──────────────────────────────────────────────────────────────────
@@ -247,7 +345,50 @@ pub fn router() -> Router<DeploymentImpl> {
         .route("/local/tags/{id}", axum::routing::delete(delete_tag))
         // Issue tags
         .route(
+            "/local/projects/{id}/issue-tags",
+            get(list_issue_tags_for_project),
+        )
+        .route(
             "/local/issues/{id}/tags",
             axum::routing::put(set_issue_tags),
+        )
+        // Issue relationships
+        .route(
+            "/local/projects/{id}/issue-relationships",
+            get(list_issue_relationships_for_project),
+        )
+        .route(
+            "/local/issue-relationships",
+            axum::routing::post(create_issue_relationship),
+        )
+        .route(
+            "/local/issue-relationships/{id}",
+            axum::routing::delete(delete_issue_relationship),
+        )
+        // Issue comments
+        .route(
+            "/local/issues/{id}/comments",
+            get(list_issue_comments),
+        )
+        .route(
+            "/local/comments",
+            axum::routing::post(create_issue_comment),
+        )
+        .route(
+            "/local/comments/{id}",
+            axum::routing::put(update_issue_comment).delete(delete_issue_comment),
+        )
+        // Workspace issue links
+        .route(
+            "/local/projects/{id}/workspace-issues",
+            get(list_workspace_issues),
+        )
+        .route(
+            "/local/workspace-issues",
+            axum::routing::post(create_workspace_issue),
+        )
+        .route(
+            "/local/workspace-issues/{workspace_id}",
+            axum::routing::delete(delete_workspace_issue),
         )
 }

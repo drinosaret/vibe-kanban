@@ -133,6 +133,32 @@ impl ExecutionProcessRepoState {
         Ok(())
     }
 
+    /// Find the earliest before_head_commit for a workspace + repo pair.
+    /// Used as the diff base when workspace-specific branches don't exist (local-only mode).
+    pub async fn find_first_before_head_for_workspace(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+        repo_id: Uuid,
+    ) -> Result<Option<String>, sqlx::Error> {
+        let row: Option<(Option<String>,)> = sqlx::query_as(
+            r#"SELECT eprs.before_head_commit
+               FROM execution_process_repo_states eprs
+               JOIN execution_processes ep ON ep.id = eprs.execution_process_id
+               JOIN sessions s ON s.id = ep.session_id
+              WHERE s.workspace_id = $1
+                AND eprs.repo_id = $2
+                AND eprs.before_head_commit IS NOT NULL
+              ORDER BY ep.created_at ASC
+              LIMIT 1"#,
+        )
+        .bind(workspace_id)
+        .bind(repo_id)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(row.and_then(|r| r.0))
+    }
+
     pub async fn find_by_execution_process_id(
         pool: &SqlitePool,
         execution_process_id: Uuid,

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { workspacesApi } from '@/shared/lib/api';
 import { repoBranchKeys } from '@/shared/hooks/useRepoBranches';
+import { workspaceSummaryKeys } from '@/shared/hooks/workspaceSummaryKeys';
 
 type MergeParams = {
   repoId: string;
@@ -28,6 +29,9 @@ export function useMerge(
 
       // Invalidate all repo branches queries
       queryClient.invalidateQueries({ queryKey: repoBranchKeys.all });
+
+      // Refresh workspace summaries so the archived state is reflected in the UI
+      queryClient.invalidateQueries({ queryKey: workspaceSummaryKeys.all });
 
       onSuccess?.();
     },

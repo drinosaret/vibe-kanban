@@ -1,9 +1,13 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { create, useModal } from '@ebay/nice-modal-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { GitBranchIcon, PlusIcon } from '@phosphor-icons/react';
 import { defineModal } from '@/shared/lib/modals';
 import { ApiError, workspacesApi } from '@/shared/lib/api';
+import { localWorkspaceIssuesApi } from '@/shared/lib/localApi';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
+import { localWorkspaceIssueKeys } from '@/shared/hooks/useLocalWorkspaceIssues';
 import { getWorkspaceDefaults } from '@/shared/lib/workspaceDefaults';
 import { ErrorDialog } from '@vibe/ui/components/ErrorDialog';
 import { useProjectWorkspaceCreateDraft } from '@/shared/hooks/useProjectWorkspaceCreateDraft';
@@ -64,6 +68,8 @@ function WorkspaceSelectionContent({
 }) {
   const { t } = useTranslation('common');
   const modal = useModal();
+  const queryClient = useQueryClient();
+  const isLocalOnly = !getRemoteApiUrl();
   const { openWorkspaceCreateFromState } = useProjectWorkspaceCreateDraft();
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -71,10 +77,10 @@ function WorkspaceSelectionContent({
   const { activeWorkspaces, archivedWorkspaces } = useWorkspaceContext();
 
   // Get already-linked workspaces from UserContext (workspaces are user-scoped)
-  const { getWorkspacesForIssue, workspaces } = useUserContext();
+  const { getWorkspacesForIssue: getUserWorkspacesForIssue, workspaces } = useUserContext();
 
-  // Get issue data from ProjectContext (issues are project-scoped)
-  const { getIssue } = useProjectContext();
+  // Get issue data and workspace links from ProjectContext (project-scoped)
+  const { getIssue, getWorkspacesForIssue: getProjectWorkspacesForIssue } = useProjectContext();
 
   const [search, setSearch] = useState('');
   const [isLinking, setIsLinking] = useState(false);
@@ -90,13 +96,16 @@ function WorkspaceSelectionContent({
 
   // Get IDs of workspaces already linked to this issue
   const linkedLocalWorkspaceIds = useMemo(() => {
-    const remoteWorkspaces = getWorkspacesForIssue(issueId);
+    // In local mode, use project context which has local workspace-issue links
+    const linkedWorkspaces = isLocalOnly
+      ? getProjectWorkspacesForIssue(issueId)
+      : getUserWorkspacesForIssue(issueId);
     return new Set(
-      remoteWorkspaces
+      linkedWorkspaces
         .map((w) => w.local_workspace_id)
         .filter((id): id is string => id !== null)
     );
-  }, [getWorkspacesForIssue, issueId]);
+  }, [isLocalOnly, getProjectWorkspacesForIssue, getUserWorkspacesForIssue, issueId]);
 
   // Combine active and archived workspaces with archived flag
   const allWorkspaces = useMemo(() => {
@@ -140,8 +149,16 @@ function WorkspaceSelectionContent({
 
       setIsLinking(true);
       try {
-        await workspacesApi.linkToIssue(workspaceId, projectId, issueId);
-        // Success - close dialog. UI will auto-update via Electric sync.
+        if (isLocalOnly) {
+          await localWorkspaceIssuesApi.create({
+            workspace_id: workspaceId,
+            issue_id: issueId,
+            project_id: projectId,
+          });
+          queryClient.invalidateQueries({ queryKey: localWorkspaceIssueKeys.all });
+        } else {
+          await workspacesApi.linkToIssue(workspaceId, projectId, issueId);
+        }
         modal.hide();
       } catch (err) {
         const errorMessage =
@@ -157,7 +174,7 @@ function WorkspaceSelectionContent({
         setIsLinking(false);
       }
     },
-    [projectId, issueId, isLinking, modal, t]
+    [projectId, issueId, isLinking, modal, t, isLocalOnly, queryClient]
   );
 
   const handleCreateNewWorkspace = useCallback(async () => {

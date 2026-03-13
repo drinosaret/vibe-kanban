@@ -112,13 +112,9 @@ function toNavbarSectionItems(
 
 export function NavbarContainer({
   mobileMode = false,
-  onCreateOrg,
-  onOrgSelect,
   onOpenDrawer,
 }: {
   mobileMode?: boolean;
-  onCreateOrg?: () => void;
-  onOrgSelect?: (orgId: string) => void;
   onOpenDrawer?: () => void;
 }) {
   const { executeAction } = useActions();
@@ -305,19 +301,10 @@ export function NavbarContainer({
   const userPopoverSlot = useMemo(() => {
     if (!mobileMode) return undefined;
     return (
-      <AppBarUserPopoverContainer
-        organizations={orgsData?.organizations ?? []}
-        selectedOrgId={selectedOrgId ?? ''}
-        onOrgSelect={onOrgSelect ?? (() => {})}
-        onCreateOrg={onCreateOrg ?? (() => {})}
-      />
+      <AppBarUserPopoverContainer />
     );
   }, [
     mobileMode,
-    orgsData?.organizations,
-    selectedOrgId,
-    onCreateOrg,
-    onOrgSelect,
   ]);
   return (
     <Navbar

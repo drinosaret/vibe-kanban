@@ -10,7 +10,7 @@ const LOCAL_ORG_RESPONSE: ListOrganizationsResponse = {
   organizations: [
     {
       id: 'local-org',
-      name: 'Local',
+      name: '',
       slug: 'local',
       is_personal: false,
       issue_prefix: 'LOCAL',
@@ -35,7 +35,7 @@ export function useUserOrganizations() {
       isLocalOnly
         ? Promise.resolve(LOCAL_ORG_RESPONSE)
         : organizationsApi.getUserOrganizations(),
-    enabled: isSignedIn,
+    enabled: isLocalOnly || isSignedIn,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }

@@ -26,7 +26,9 @@ import {
   type BulkUpdateIssueItem,
 } from '@/shared/lib/remoteApi';
 import { localIssuesApi } from '@/shared/lib/localApi';
+import { localIssueKeys } from '@/shared/hooks/useLocalIssues';
 import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
+import { useQueryClient } from '@tanstack/react-query';
 import { PlusIcon, DotsThreeIcon } from '@phosphor-icons/react';
 import { Actions } from '@/shared/actions';
 import {
@@ -115,6 +117,7 @@ function LoadingState() {
  * Must be rendered within both OrgProvider and ProjectProvider.
  */
 export function KanbanContainer() {
+  const queryClient = useQueryClient();
   const isLocalOnly = !getRemoteApiUrl();
   const isMobile = useIsMobile();
   const { t } = useTranslation('common');
@@ -566,14 +569,14 @@ export function KanbanContainer() {
           return {
             id: workspace.id,
             localWorkspaceId: workspace.local_workspace_id,
-            name: workspace.name,
-            archived: workspace.archived,
-            filesChanged: workspace.files_changed ?? 0,
-            linesAdded: workspace.lines_added ?? 0,
-            linesRemoved: workspace.lines_removed ?? 0,
+            name: workspace.name ?? localWorkspace?.name ?? null,
+            archived: workspace.archived || (localWorkspace?.isArchived ?? false),
+            filesChanged: workspace.files_changed ?? localWorkspace?.filesChanged ?? 0,
+            linesAdded: workspace.lines_added ?? localWorkspace?.linesAdded ?? 0,
+            linesRemoved: workspace.lines_removed ?? localWorkspace?.linesRemoved ?? 0,
             prs: prsByWorkspaceId.get(workspace.id) ?? [],
             owner: membersWithProfilesById.get(workspace.owner_user_id) ?? null,
-            updatedAt: workspace.updated_at,
+            updatedAt: localWorkspace?.updatedAt ?? workspace.updated_at,
             isOwnedByCurrentUser: workspace.owner_user_id === userId,
             isRunning: localWorkspace?.isRunning,
             hasPendingApproval: localWorkspace?.hasPendingApproval,
@@ -702,6 +705,11 @@ export function KanbanContainer() {
           )
         : bulkUpdateIssues(updates);
       bulkUpdateFn
+        .then(() => {
+          if (isLocalOnly) {
+            queryClient.invalidateQueries({ queryKey: localIssueKeys.list(projectId) });
+          }
+        })
         .catch((err) => {
           console.error('Failed to bulk update sort order:', err);
         })
@@ -712,7 +720,7 @@ export function KanbanContainer() {
           }, 500);
         });
     },
-    [kanbanFilters.sortField, calculateSortOrder, isLocalOnly]
+    [kanbanFilters.sortField, calculateSortOrder, isLocalOnly, queryClient, projectId]
   );
 
   const handleCardClick = useCallback(
@@ -964,7 +972,7 @@ export function KanbanContainer() {
                                 e.stopPropagation();
                                 handleCardPriorityClick(issue.id);
                               }}
-                              onAssigneeClick={(e) => {
+                              onAssigneeClick={isLocalOnly ? undefined : (e) => {
                                 e.stopPropagation();
                                 handleCardAssigneeClick(issue.id);
                               }}

@@ -1,8 +1,5 @@
 import {
-  BuildingsIcon,
-  CheckIcon,
   GearIcon,
-  PlusIcon,
   SignInIcon,
   SignOutIcon,
   UserIcon,
@@ -14,26 +11,15 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
 } from './Dropdown';
-
-export interface AppBarUserOrganization {
-  id: string;
-  name: string;
-}
 
 interface AppBarUserPopoverProps {
   isSignedIn: boolean;
   avatarUrl: string | null;
   avatarError: boolean;
-  organizations: AppBarUserOrganization[];
-  selectedOrgId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onOrgSelect: (orgId: string) => void;
-  onCreateOrg?: () => void;
-  onOrgSettings?: (orgId: string) => void;
   onSettings?: () => void;
   onSignIn: () => void;
   onLogout: () => void;
@@ -44,13 +30,8 @@ export function AppBarUserPopover({
   isSignedIn,
   avatarUrl,
   avatarError,
-  organizations,
-  selectedOrgId,
   open,
   onOpenChange,
-  onOrgSelect,
-  onCreateOrg,
-  onOrgSettings,
   onSettings,
   onSignIn,
   onLogout,
@@ -124,45 +105,10 @@ export function AppBarUserPopover({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="end" className="min-w-[200px]">
-        <DropdownMenuLabel>{t('orgSwitcher.organizations')}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {organizations.map((org) => (
-          <DropdownMenuItem
-            key={org.id}
-            icon={org.id === selectedOrgId ? CheckIcon : BuildingsIcon}
-            onClick={() => onOrgSelect(org.id)}
-            className={cn(org.id === selectedOrgId && 'bg-brand/10', 'group')}
-          >
-            <span className="flex items-center gap-2 w-full">
-              <span className="flex-1 truncate">{org.name}</span>
-              {onOrgSettings && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenChange(false);
-                    onOrgSettings(org.id);
-                  }}
-                  className="sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded hover:bg-secondary transition-opacity shrink-0"
-                  aria-label={t('orgSwitcher.orgSettings')}
-                >
-                  <GearIcon className="size-icon-xs" weight="bold" />
-                </button>
-              )}
-            </span>
-          </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem icon={PlusIcon} onClick={onCreateOrg}>
-          {t('orgSwitcher.createOrganization')}
-        </DropdownMenuItem>
         {onSettings && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem icon={GearIcon} onClick={onSettings}>
-              {settingsLabel}
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem icon={GearIcon} onClick={onSettings}>
+            {settingsLabel}
+          </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem icon={SignOutIcon} onClick={onLogout}>

@@ -2,7 +2,9 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { create, useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/shared/lib/modals';
 import { ProjectProvider } from '@/shared/providers/remote/ProjectProvider';
+import { LocalProjectProvider } from '@/shared/providers/remote/LocalProjectProvider';
 import { useProjectContext } from '@/shared/hooks/useProjectContext';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { CommandDialog } from '@vibe/ui/components/Command';
 import {
   CommandBar,
@@ -327,10 +329,11 @@ function ProjectSelectionContent({ selection }: { selection: SelectionMode }) {
 
 const ProjectSelectionDialogImpl = create<ProjectSelectionDialogProps>(
   ({ projectId, selection }) => {
+    const Provider = getRemoteApiUrl() ? ProjectProvider : LocalProjectProvider;
     return (
-      <ProjectProvider projectId={projectId}>
+      <Provider projectId={projectId}>
         <ProjectSelectionContent selection={selection} />
-      </ProjectProvider>
+      </Provider>
     );
   }
 );

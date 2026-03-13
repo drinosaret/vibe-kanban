@@ -24,6 +24,7 @@ import {
   KanbanIssuePanel,
   type IssueFormData,
 } from '@vibe/ui/components/KanbanIssuePanel';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { useActions } from '@/shared/hooks/useActions';
 import { useUserContext } from '@/shared/hooks/useUserContext';
 import { useWorkspaceContext } from '@/shared/hooks/useWorkspaceContext';
@@ -74,6 +75,7 @@ export function KanbanIssuePanelContainer({
   onExpectIssueOpen,
 }: KanbanIssuePanelContainerProps) {
   const { t } = useTranslation('common');
+  const isLocalOnly = !getRemoteApiUrl();
   const appNavigation = useAppNavigation();
   const routeState = useCurrentKanbanRouteState();
 
@@ -888,7 +890,7 @@ export function KanbanIssuePanelContainer({
       mode={mode}
       displayId={displayId}
       formData={displayData}
-      assigneeUsers={displayAssigneeUsers}
+      assigneeUsers={isLocalOnly ? undefined : displayAssigneeUsers}
       onFormChange={handlePropertyChange}
       statuses={sortedStatuses}
       tags={tags}

@@ -47,15 +47,6 @@ pub async fn create_workspace(
 ) -> Result<ResponseJson<ApiResponse<Workspace>>, ApiError> {
     let workspace = create_workspace_record(&deployment, payload.name).await?;
 
-    deployment
-        .track_if_analytics_allowed(
-            "workspace_created",
-            serde_json::json!({
-                "workspace_id": workspace.id.to_string(),
-            }),
-        )
-        .await;
-
     Ok(ResponseJson(ApiResponse::success(workspace)))
 }
 
@@ -144,17 +135,6 @@ pub async fn create_and_start_workspace(
         .container()
         .start_workspace(&workspace, executor_config.clone(), workspace_prompt)
         .await?;
-
-    deployment
-        .track_if_analytics_allowed(
-            "workspace_created_and_started",
-            serde_json::json!({
-                "executor": &executor_config.executor,
-                "variant": &executor_config.variant,
-                "workspace_id": workspace.id.to_string(),
-            }),
-        )
-        .await;
 
     Ok(ResponseJson(ApiResponse::success(
         CreateAndStartWorkspaceResponse {

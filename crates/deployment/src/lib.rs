@@ -9,10 +9,8 @@ use futures::{StreamExt, TryStreamExt};
 use git::{GitService, GitServiceError};
 use git2::Error as Git2Error;
 use relay_control::{RelayControl, signing::RelaySigningService};
-use serde_json::Value;
 use server_info::ServerInfo;
 use services::services::{
-    analytics::AnalyticsService,
     approvals::Approvals,
     auth::AuthContext,
     config::{Config, ConfigError},
@@ -81,8 +79,6 @@ pub trait Deployment: Clone + Send + Sync + 'static {
 
     fn db(&self) -> &DBService;
 
-    fn analytics(&self) -> &Option<AnalyticsService>;
-
     fn container(&self) -> &impl ContainerService;
 
     fn git(&self) -> &GitService;
@@ -127,14 +123,6 @@ pub trait Deployment: Clone + Send + Sync + 'static {
         sentry_utils::configure_user_scope(user_id, username, email);
 
         Ok(())
-    }
-
-    async fn track_if_analytics_allowed(&self, event_name: &str, properties: Value) {
-        let analytics_enabled = self.config().read().await.analytics_enabled;
-        // Track events unless user has explicitly opted out
-        if analytics_enabled && let Some(analytics) = self.analytics() {
-            analytics.track_event(self.user_id(), event_name, Some(properties.clone()));
-        }
     }
 
     async fn stream_events(

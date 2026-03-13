@@ -7,7 +7,6 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { siDiscord, siGithub } from "simple-icons";
 import { AppBar, type AppBarHostStatus } from "@vibe/ui/components/AppBar";
 import { XIcon, PlusIcon, HouseIcon, KanbanIcon } from "@phosphor-icons/react";
 import { MobileDrawer } from "@vibe/ui/components/MobileDrawer";
@@ -17,8 +16,6 @@ import { cn } from "@/shared/lib/utils";
 import { useUserOrganizations } from "@/shared/hooks/useUserOrganizations";
 import { useAuth } from "@/shared/hooks/auth/useAuth";
 import { useOrganizationStore } from "@/shared/stores/useOrganizationStore";
-import { useDiscordOnlineCount } from "@/shared/hooks/useDiscordOnlineCount";
-import { useGitHubStars } from "@/shared/hooks/useGitHubStars";
 import { SettingsDialog } from "@/shared/dialogs/settings/SettingsDialog";
 import { CommandBarDialog } from "@/shared/dialogs/command-bar/CommandBarDialog";
 import { useCommandBarShortcut } from "@/shared/hooks/useCommandBarShortcut";
@@ -31,10 +28,6 @@ import {
   useRelayAppBarHosts,
 } from "@remote/shared/hooks/useRelayAppBarHosts";
 import { REMOTE_SETTINGS_SECTIONS } from "@remote/shared/constants/settings";
-import {
-  CreateOrganizationDialog,
-  type CreateOrganizationResult,
-} from "@/shared/dialogs/org/CreateOrganizationDialog";
 import {
   CreateRemoteProjectDialog,
   type CreateRemoteProjectResult,
@@ -125,8 +118,6 @@ export function RemoteAppShell({ children }: RemoteAppShellProps) {
   const isLoadingProjects =
     isSignedIn && !!activeOrganizationId && projectsQuery.isLoading;
 
-  const { data: onlineCount } = useDiscordOnlineCount();
-  const { data: starCount } = useGitHubStars();
   const { hosts: relayHosts } = useRelayAppBarHosts(isSignedIn);
 
   const selectedOrgName =
@@ -205,19 +196,6 @@ export function RemoteAppShell({ children }: RemoteAppShellProps) {
     }
   }, [activeOrganizationId, navigate, projectsQuery]);
 
-  const handleCreateOrg = useCallback(async () => {
-    try {
-      const result: CreateOrganizationResult =
-        await CreateOrganizationDialog.show();
-
-      if (result.action === "created" && result.organizationId) {
-        setSelectedOrgId(result.organizationId);
-      }
-    } catch {
-      // Dialog cancelled
-    }
-  }, [setSelectedOrgId]);
-
   const handleHostClick = useCallback(
     (hostId: string, status: AppBarHostStatus) => {
       if (status === "online") {
@@ -244,19 +222,10 @@ export function RemoteAppShell({ children }: RemoteAppShellProps) {
   const mobileUserSlot = useMemo(() => {
     if (!isMobile) return undefined;
     return (
-      <RemoteAppBarUserPopoverContainer
-        organizations={organizations}
-        selectedOrgId={selectedOrgId ?? ""}
-        onOrgSelect={setSelectedOrgId}
-        onCreateOrg={handleCreateOrg}
-      />
+      <RemoteAppBarUserPopoverContainer />
     );
   }, [
     isMobile,
-    organizations,
-    selectedOrgId,
-    setSelectedOrgId,
-    handleCreateOrg,
   ]);
 
   return (
@@ -291,17 +260,8 @@ export function RemoteAppShell({ children }: RemoteAppShellProps) {
             navigate({ to: "/account" });
           }}
           userPopover={
-            <RemoteAppBarUserPopoverContainer
-              organizations={organizations}
-              selectedOrgId={selectedOrgId ?? ""}
-              onOrgSelect={setSelectedOrgId}
-              onCreateOrg={handleCreateOrg}
-            />
+            <RemoteAppBarUserPopoverContainer />
           }
-          starCount={starCount}
-          onlineCount={onlineCount}
-          githubIconPath={siGithub.path}
-          discordIconPath={siDiscord.path}
         />
       )}
 

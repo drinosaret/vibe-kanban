@@ -22,7 +22,6 @@
     "@vibe/ui": "workspace:*",
     "@vibe/web-core": "workspace:*",
     "clsx": "^2.1.1",
-    "posthog-js": "^1.283.0",
     "prettier": "^3.6.1",
     "react": "^18.2.0",
     "react-hotkeys-hook": "^5.1.0",

@@ -1,6 +1,19 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
+
+/// Deserialize a field that distinguishes between absent, explicit null, and a value.
+/// - absent in JSON → None (field not provided, keep existing)
+/// - null in JSON   → Some(None) (explicitly clear)
+/// - "value"        → Some(Some(value))
+fn deserialize_optional_nullable<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // If serde calls this, the key was present. Deserialize the inner value.
+    let value: Option<String> = Option::deserialize(deserializer)?;
+    Ok(Some(value))
+}
 
 // ── Models ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +71,41 @@ pub struct LocalIssueTag {
     pub tag_id: String,
 }
 
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+pub struct LocalIssueRelationship {
+    pub id: String,
+    pub issue_id: String,
+    pub related_issue_id: String,
+    pub relationship_type: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+pub struct LocalIssueComment {
+    pub id: String,
+    pub issue_id: String,
+    pub author_id: Option<String>,
+    pub parent_id: Option<String>,
+    pub message: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+pub struct LocalWorkspaceIssue {
+    pub workspace_id: String,
+    pub issue_id: String,
+    pub project_id: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+pub struct CreateLocalWorkspaceIssue {
+    pub workspace_id: String,
+    pub issue_id: String,
+    pub project_id: String,
+}
+
 // ── Request types ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, TS)]
@@ -108,9 +156,13 @@ pub struct UpdateLocalIssue {
     pub status_id: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
-    pub priority: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub priority: Option<Option<String>>,
     pub sort_order: Option<f64>,
-    pub parent_issue_id: Option<String>,
+    /// Double-Option: None = not provided (keep existing), Some(None) = explicitly clear,
+    /// Some(Some(id)) = set to new parent.
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub parent_issue_id: Option<Option<String>>,
     pub parent_issue_sort_order: Option<f64>,
 }
 
@@ -123,6 +175,25 @@ pub struct CreateLocalTag {
 #[derive(Debug, Deserialize, TS)]
 pub struct SetIssueTags {
     pub tag_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+pub struct CreateLocalIssueRelationship {
+    pub issue_id: String,
+    pub related_issue_id: String,
+    pub relationship_type: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+pub struct CreateLocalIssueComment {
+    pub issue_id: String,
+    pub message: String,
+    pub parent_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+pub struct UpdateLocalIssueComment {
+    pub message: Option<String>,
 }
 
 // ── Implementations ─────────────────────────────────────────────────────────
@@ -447,12 +518,15 @@ impl LocalIssue {
             .description
             .as_deref()
             .or(existing.description.as_deref());
-        let priority = data.priority.as_deref().or(existing.priority.as_deref());
+        let priority = match &data.priority {
+            Some(inner) => inner.as_deref(),
+            None => existing.priority.as_deref(),
+        };
         let sort_order = data.sort_order.unwrap_or(existing.sort_order);
-        let parent_issue_id = data
-            .parent_issue_id
-            .as_deref()
-            .or(existing.parent_issue_id.as_deref());
+        let parent_issue_id = match &data.parent_issue_id {
+            Some(inner) => inner.as_deref(),   // explicitly provided (null or value)
+            None => existing.parent_issue_id.as_deref(), // not provided, keep existing
+        };
         let parent_issue_sort_order = data
             .parent_issue_sort_order
             .or(existing.parent_issue_sort_order);
@@ -535,6 +609,21 @@ impl LocalTag {
 }
 
 impl LocalIssueTag {
+    pub async fn find_all_by_project(
+        pool: &SqlitePool,
+        project_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, LocalIssueTag>(
+            "SELECT it.issue_id, it.tag_id
+             FROM local_issue_tags it
+             INNER JOIN local_issues i ON i.id = it.issue_id
+             WHERE i.project_id = ?",
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn find_all_by_issue(
         pool: &SqlitePool,
         issue_id: &str,
@@ -572,5 +661,184 @@ impl LocalIssueTag {
         }
 
         Self::find_all_by_issue(pool, issue_id).await
+    }
+}
+
+// ── Issue Relationship Operations ───────────────────────────────────────────
+
+impl LocalIssueRelationship {
+    pub async fn find_all_by_project(
+        pool: &SqlitePool,
+        project_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, LocalIssueRelationship>(
+            "SELECT r.id, r.issue_id, r.related_issue_id, r.relationship_type, r.created_at
+             FROM local_issue_relationships r
+             INNER JOIN local_issues i ON i.id = r.issue_id
+             WHERE i.project_id = ?",
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn create(
+        pool: &SqlitePool,
+        data: &CreateLocalIssueRelationship,
+    ) -> Result<Self, sqlx::Error> {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query_as::<_, LocalIssueRelationship>(
+            "INSERT INTO local_issue_relationships (id, issue_id, related_issue_id, relationship_type)
+             VALUES (?, ?, ?, ?)
+             RETURNING id, issue_id, related_issue_id, relationship_type, created_at",
+        )
+        .bind(&id)
+        .bind(&data.issue_id)
+        .bind(&data.related_issue_id)
+        .bind(&data.relationship_type)
+        .fetch_one(pool)
+        .await
+    }
+
+    pub async fn delete(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM local_issue_relationships WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+}
+
+// ── Issue Comment Operations ────────────────────────────────────────────────
+
+impl LocalIssueComment {
+    pub async fn find_all_by_issue(
+        pool: &SqlitePool,
+        issue_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, LocalIssueComment>(
+            "SELECT id, issue_id, author_id, parent_id, message, created_at, updated_at
+             FROM local_issue_comments
+             WHERE issue_id = ?
+             ORDER BY created_at ASC",
+        )
+        .bind(issue_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn create(
+        pool: &SqlitePool,
+        data: &CreateLocalIssueComment,
+    ) -> Result<Self, sqlx::Error> {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query_as::<_, LocalIssueComment>(
+            "INSERT INTO local_issue_comments (id, issue_id, parent_id, message)
+             VALUES (?, ?, ?, ?)
+             RETURNING id, issue_id, author_id, parent_id, message, created_at, updated_at",
+        )
+        .bind(&id)
+        .bind(&data.issue_id)
+        .bind(&data.parent_id)
+        .bind(&data.message)
+        .fetch_one(pool)
+        .await
+    }
+
+    pub async fn update(
+        pool: &SqlitePool,
+        id: &str,
+        data: &UpdateLocalIssueComment,
+    ) -> Result<Self, sqlx::Error> {
+        let existing = sqlx::query_as::<_, LocalIssueComment>(
+            "SELECT id, issue_id, author_id, parent_id, message, created_at, updated_at
+             FROM local_issue_comments WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+
+        let message = data.message.as_deref().unwrap_or(&existing.message);
+
+        sqlx::query_as::<_, LocalIssueComment>(
+            "UPDATE local_issue_comments SET message = ?, updated_at = datetime('now', 'subsec')
+             WHERE id = ?
+             RETURNING id, issue_id, author_id, parent_id, message, created_at, updated_at",
+        )
+        .bind(message)
+        .bind(id)
+        .fetch_one(pool)
+        .await
+    }
+
+    pub async fn delete(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM local_issue_comments WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+}
+
+// ── Workspace Issue Link Operations ─────────────────────────────────────────
+
+impl LocalWorkspaceIssue {
+    pub async fn find_all_by_project(
+        pool: &SqlitePool,
+        project_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, LocalWorkspaceIssue>(
+            "SELECT workspace_id, issue_id, project_id, created_at
+             FROM local_workspace_issues
+             WHERE project_id = ?",
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn create(
+        pool: &SqlitePool,
+        data: &CreateLocalWorkspaceIssue,
+    ) -> Result<Self, sqlx::Error> {
+        // INSERT OR IGNORE produces no RETURNING row when the link already exists,
+        // so use fetch_optional and fall back to querying the existing row.
+        let inserted = sqlx::query_as::<_, LocalWorkspaceIssue>(
+            "INSERT OR IGNORE INTO local_workspace_issues (workspace_id, issue_id, project_id)
+             VALUES (?, ?, ?)
+             RETURNING workspace_id, issue_id, project_id, created_at",
+        )
+        .bind(&data.workspace_id)
+        .bind(&data.issue_id)
+        .bind(&data.project_id)
+        .fetch_optional(pool)
+        .await?;
+
+        match inserted {
+            Some(row) => Ok(row),
+            None => {
+                sqlx::query_as::<_, LocalWorkspaceIssue>(
+                    "SELECT workspace_id, issue_id, project_id, created_at
+                     FROM local_workspace_issues
+                     WHERE workspace_id = ? AND issue_id = ?",
+                )
+                .bind(&data.workspace_id)
+                .bind(&data.issue_id)
+                .fetch_one(pool)
+                .await
+            }
+        }
+    }
+
+    pub async fn delete_by_workspace(
+        pool: &SqlitePool,
+        workspace_id: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let result =
+            sqlx::query("DELETE FROM local_workspace_issues WHERE workspace_id = ?")
+                .bind(workspace_id)
+                .execute(pool)
+                .await?;
+        Ok(result.rows_affected() > 0)
     }
 }

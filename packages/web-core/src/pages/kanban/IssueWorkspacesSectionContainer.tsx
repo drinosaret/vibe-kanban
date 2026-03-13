@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useParams } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { LinkIcon, PlusIcon } from '@phosphor-icons/react';
 import { useProjectContext } from '@/shared/hooks/useProjectContext';
@@ -10,6 +11,9 @@ import { useWorkspaceContext } from '@/shared/hooks/useWorkspaceContext';
 import { useAppNavigation } from '@/shared/hooks/useAppNavigation';
 import { useProjectWorkspaceCreateDraft } from '@/shared/hooks/useProjectWorkspaceCreateDraft';
 import { workspacesApi } from '@/shared/lib/api';
+import { localWorkspaceIssuesApi } from '@/shared/lib/localApi';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
+import { localWorkspaceIssueKeys } from '@/shared/hooks/useLocalWorkspaceIssues';
 import { getWorkspaceDefaults } from '@/shared/lib/workspaceDefaults';
 import {
   buildLinkedIssueCreateState,
@@ -36,6 +40,8 @@ export function IssueWorkspacesSectionContainer({
 }: IssueWorkspacesSectionContainerProps) {
   const { t } = useTranslation('common');
   const { projectId } = useParams({ strict: false });
+  const queryClient = useQueryClient();
+  const isLocalOnly = !getRemoteApiUrl();
   const appNavigation = useAppNavigation();
   const { openWorkspaceCreateFromState } = useProjectWorkspaceCreateDraft();
   const { userId } = useAuth();
@@ -90,14 +96,14 @@ export function IssueWorkspacesSectionContainer({
       return {
         id: workspace.id,
         localWorkspaceId: workspace.local_workspace_id,
-        name: workspace.name,
-        archived: workspace.archived,
-        filesChanged: workspace.files_changed ?? 0,
-        linesAdded: workspace.lines_added ?? 0,
-        linesRemoved: workspace.lines_removed ?? 0,
+        name: workspace.name ?? localWorkspace?.name ?? null,
+        archived: workspace.archived || (localWorkspace?.isArchived ?? false),
+        filesChanged: workspace.files_changed ?? localWorkspace?.filesChanged ?? 0,
+        linesAdded: workspace.lines_added ?? localWorkspace?.linesAdded ?? 0,
+        linesRemoved: workspace.lines_removed ?? localWorkspace?.linesRemoved ?? 0,
         prs: linkedPrs,
         owner,
-        updatedAt: workspace.updated_at,
+        updatedAt: localWorkspace?.updatedAt ?? workspace.updated_at,
         isOwnedByCurrentUser: workspace.owner_user_id === userId,
         isRunning: localWorkspace?.isRunning,
         hasPendingApproval: localWorkspace?.hasPendingApproval,
@@ -217,7 +223,12 @@ export function IssueWorkspacesSectionContainer({
 
       if (result === 'confirmed') {
         try {
-          await workspacesApi.unlinkFromIssue(localWorkspaceId);
+          if (isLocalOnly) {
+            await localWorkspaceIssuesApi.delete(localWorkspaceId);
+            queryClient.invalidateQueries({ queryKey: localWorkspaceIssueKeys.all });
+          } else {
+            await workspacesApi.unlinkFromIssue(localWorkspaceId);
+          }
         } catch (error) {
           ConfirmDialog.show({
             title: t('common:error'),
@@ -231,7 +242,7 @@ export function IssueWorkspacesSectionContainer({
         }
       }
     },
-    [t]
+    [t, isLocalOnly, queryClient]
   );
 
   // Handle deleting a workspace (unlinks first, then deletes local)
@@ -239,23 +250,19 @@ export function IssueWorkspacesSectionContainer({
     async (localWorkspaceId: string) => {
       const localWorkspace = localWorkspacesById.get(localWorkspaceId);
       if (!localWorkspace) {
-        ConfirmDialog.show({
-          title: t('common:error'),
-          message: t('workspaces.deleteError'),
-          confirmText: t('common:ok'),
-          showCancelButton: false,
-        });
+        // Orphaned link — workspace no longer exists, just clean up the link
+        try {
+          if (isLocalOnly) {
+            await localWorkspaceIssuesApi.delete(localWorkspaceId);
+            queryClient.invalidateQueries({ queryKey: localWorkspaceIssueKeys.all });
+          }
+        } catch {
+          // Link may already be gone
+        }
         return;
       }
 
       const result = await DeleteWorkspaceDialog.show({
-        branchName: localWorkspace.branch,
-        hasOpenPR:
-          workspacesWithStats
-            .find(
-              (workspace) => workspace.localWorkspaceId === localWorkspaceId
-            )
-            ?.prs.some((pr) => pr.status === 'open') ?? false,
         isLinkedToIssue: true,
         linkedIssueSimpleId: getIssue(issueId)?.simple_id,
       });
@@ -267,9 +274,14 @@ export function IssueWorkspacesSectionContainer({
       try {
         // Delete local workspace first
         await workspacesApi.delete(localWorkspaceId, result.deleteBranches);
-        // Unlink from remote after successful deletion
+        // Unlink after successful deletion
         if (result.unlinkFromIssue) {
-          await workspacesApi.unlinkFromIssue(localWorkspaceId);
+          if (isLocalOnly) {
+            await localWorkspaceIssuesApi.delete(localWorkspaceId);
+            queryClient.invalidateQueries({ queryKey: localWorkspaceIssueKeys.all });
+          } else {
+            await workspacesApi.unlinkFromIssue(localWorkspaceId);
+          }
         }
       } catch (error) {
         ConfirmDialog.show({
@@ -283,7 +295,7 @@ export function IssueWorkspacesSectionContainer({
         });
       }
     },
-    [localWorkspacesById, workspacesWithStats, t, issueId, getIssue]
+    [localWorkspacesById, workspacesWithStats, t, issueId, getIssue, isLocalOnly, queryClient]
   );
 
   // Actions for the section header

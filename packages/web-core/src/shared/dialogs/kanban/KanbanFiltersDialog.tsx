@@ -219,19 +219,21 @@ export function KanbanFiltersDialog({
               onChange={onPrioritiesChange}
             />
 
-            <button
-              type="button"
-              onClick={handleOpenAssigneeDialog}
-              className={cn(
-                'flex items-center gap-half rounded-sm bg-panel px-base py-half',
-                'text-sm text-normal transition-colors hover:bg-secondary'
-              )}
-            >
-              <UsersIcon className="size-icon-xs" weight="bold" />
-              <span>{t('kanban.assignee', 'Assignee')}</span>
-              {filters.assigneeIds.length > 0 &&
-                renderAssigneeBadge(filters.assigneeIds)}
-            </button>
+            {users.length > 0 && (
+              <button
+                type="button"
+                onClick={handleOpenAssigneeDialog}
+                className={cn(
+                  'flex items-center gap-half rounded-sm bg-panel px-base py-half',
+                  'text-sm text-normal transition-colors hover:bg-secondary'
+                )}
+              >
+                <UsersIcon className="size-icon-xs" weight="bold" />
+                <span>{t('kanban.assignee', 'Assignee')}</span>
+                {filters.assigneeIds.length > 0 &&
+                  renderAssigneeBadge(filters.assigneeIds)}
+              </button>
+            )}
 
             {tags.length > 0 && (
               <MultiSelectDropdown

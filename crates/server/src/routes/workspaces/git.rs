@@ -224,13 +224,30 @@ pub async fn merge_workspace(
     let vk_id = resolve_vibe_kanban_identifier(&deployment, workspace.id).await;
     let commit_message = format!("{} (vibe-kanban {})", workspace_label, vk_id);
 
-    let merge_commit_id = deployment.git().merge_changes(
-        &repo.path,
-        &worktree_path,
-        &workspace.branch,
-        &workspace_repo.target_branch,
-        &commit_message,
-    )?;
+    // In local-only mode, workspace branches don't exist (symlinks, not worktrees).
+    // Changes are already committed to the repo's current branch. Check if the workspace
+    // branch exists; if not, record the current HEAD as the merge commit.
+    let workspace_branch_exists = deployment
+        .git()
+        .check_branch_exists(&repo.path, &workspace.branch)
+        .unwrap_or(false);
+
+    let merge_commit_id = if workspace_branch_exists {
+        deployment.git().merge_changes(
+            &repo.path,
+            &worktree_path,
+            &workspace.branch,
+            &workspace_repo.target_branch,
+            &commit_message,
+        )?
+    } else {
+        // No workspace branch — changes are already on the current branch.
+        // Use current HEAD as the merge commit ID.
+        deployment
+            .git()
+            .get_head_info(&repo.path)
+            .map(|h| h.oid)?
+    };
 
     Merge::create_direct(
         pool,
@@ -253,15 +270,6 @@ pub async fn merge_workspace(
     {
         tracing::error!("Failed to archive workspace {}: {}", workspace.id, e);
     }
-
-    deployment
-        .track_if_analytics_allowed(
-            "task_attempt_merged",
-            serde_json::json!({
-                "workspace_id": workspace.id.to_string(),
-            }),
-        )
-        .await;
 
     Ok(ResponseJson(ApiResponse::success(())))
 }
@@ -441,22 +449,28 @@ pub async fn get_workspace_branch_status(
             .git()
             .find_branch_type(&repo.path, &target_branch)?;
 
+        // In local-only mode, workspace branches may not exist (symlinks, not worktrees).
+        // Gracefully handle BranchNotFound by reporting 0 ahead/behind.
         let (commits_ahead, commits_behind) = match target_branch_type {
             BranchType::Local => {
-                let (a, b) = deployment.git().get_branch_status(
+                match deployment.git().get_branch_status(
                     &repo.path,
                     &workspace.branch,
                     &target_branch,
-                )?;
-                (Some(a), Some(b))
+                ) {
+                    Ok((a, b)) => (Some(a), Some(b)),
+                    Err(_) => (Some(0), Some(0)),
+                }
             }
             BranchType::Remote => {
-                let (ahead, behind) = deployment.git().get_remote_branch_status(
+                match deployment.git().get_remote_branch_status(
                     &repo.path,
                     &workspace.branch,
                     Some(&target_branch),
-                )?;
-                (Some(ahead), Some(behind))
+                ) {
+                    Ok((ahead, behind)) => (Some(ahead), Some(behind)),
+                    Err(_) => (Some(0), Some(0)),
+                }
             }
         };
 
@@ -538,16 +552,6 @@ pub async fn change_target_branch(
         deployment
             .git()
             .get_branch_status(&repo.path, &workspace.branch, &new_target_branch)?;
-
-    deployment
-        .track_if_analytics_allowed(
-            "task_attempt_target_branch_changed",
-            serde_json::json!({
-                "repo_id": repo_id.to_string(),
-                "workspace_id": workspace.id.to_string(),
-            }),
-        )
-        .await;
 
     Ok(ResponseJson(ApiResponse::success(
         ChangeTargetBranchResponse {
@@ -681,15 +685,6 @@ pub async fn rename_branch(
         );
     }
 
-    deployment
-        .track_if_analytics_allowed(
-            "task_attempt_branch_renamed",
-            serde_json::json!({
-                "updated_children": updated_children_count,
-            }),
-        )
-        .await;
-
     Ok(ResponseJson(ApiResponse::success(RenameBranchResponse {
         branch: new_branch_name.to_string(),
     })))
@@ -781,16 +776,6 @@ pub async fn rebase_workspace(
             other => Err(ApiError::GitService(other)),
         };
     }
-
-    deployment
-        .track_if_analytics_allowed(
-            "task_attempt_rebased",
-            serde_json::json!({
-                "workspace_id": workspace.id.to_string(),
-                "repo_id": payload.repo_id.to_string(),
-            }),
-        )
-        .await;
 
     Ok(ResponseJson(ApiResponse::success(())))
 }

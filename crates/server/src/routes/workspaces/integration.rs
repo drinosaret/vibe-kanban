@@ -62,16 +62,6 @@ pub async fn run_agent_setup(
         _ => return Err(ApiError::Executor(ExecutorError::SetupHelperNotSupported)),
     }
 
-    deployment
-        .track_if_analytics_allowed(
-            "agent_setup_script_executed",
-            serde_json::json!({
-                "executor_profile_id": executor_profile_id.to_string(),
-                "workspace_id": workspace.id.to_string(),
-            }),
-        )
-        .await;
-
     Ok(ResponseJson(ApiResponse::success(RunAgentSetupResponse {})))
 }
 
@@ -116,17 +106,6 @@ pub async fn open_workspace_in_editor(
                 if url.is_some() { " (remote mode)" } else { "" }
             );
 
-            deployment
-                .track_if_analytics_allowed(
-                    "task_attempt_editor_opened",
-                    serde_json::json!({
-                        "workspace_id": workspace.id.to_string(),
-                        "editor_type": payload.editor_type.as_ref(),
-                        "remote_mode": url.is_some(),
-                    }),
-                )
-                .await;
-
             Ok(ResponseJson(ApiResponse::success(OpenEditorResponse {
                 url,
             })))
@@ -152,15 +131,6 @@ pub async fn gh_cli_setup_handler(
 > {
     match super::gh_cli_setup::run_gh_cli_setup(&deployment, &workspace).await {
         Ok(execution_process) => {
-            deployment
-                .track_if_analytics_allowed(
-                    "gh_cli_setup_executed",
-                    serde_json::json!({
-                        "workspace_id": workspace.id.to_string(),
-                    }),
-                )
-                .await;
-
             Ok(ResponseJson(ApiResponse::success(execution_process)))
         }
         Err(ApiError::Executor(executors::executors::ExecutorError::ExecutableNotFound {

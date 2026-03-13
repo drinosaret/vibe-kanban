@@ -1,6 +1,5 @@
 import {
   forwardRef,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -22,7 +21,6 @@ import {
   type Icon,
 } from '@phosphor-icons/react';
 import type { IconProps } from '@phosphor-icons/react';
-import { usePostHog } from 'posthog-js/react';
 import { siDiscord } from 'simple-icons';
 import {
   BaseCodingAgent,
@@ -124,13 +122,6 @@ const SOCIAL_LINKS = [
   },
 ];
 
-const REMOTE_ONBOARDING_EVENTS = {
-  STAGE_VIEWED: 'remote_onboarding_ui_stage_viewed',
-  STAGE_SUBMITTED: 'remote_onboarding_ui_stage_submitted',
-  STAGE_COMPLETED: 'remote_onboarding_ui_stage_completed',
-  STAGE_FAILED: 'remote_onboarding_ui_stage_failed',
-} as const;
-
 function randomDefaultSoundFile(): SoundFile {
   const randomIndex = Math.floor(Math.random() * SOUND_OPTIONS.length);
   return SOUND_OPTIONS[randomIndex]?.value ?? SoundFile.COW_MOOING;
@@ -149,7 +140,6 @@ export function LandingPage() {
   const appNavigation = useAppNavigation();
   const { theme } = useTheme();
   const { config, profiles, updateAndSaveConfig, loading } = useUserSystem();
-  const posthog = usePostHog();
 
   const [initialized, setInitialized] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -160,19 +150,7 @@ export function LandingPage() {
   const [customCommand, setCustomCommand] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundFile, setSoundFile] = useState<SoundFile>(randomDefaultSoundFile);
-  const hasTrackedStageViewRef = useRef(false);
   const hasRedirectedToRootRef = useRef(false);
-
-  const trackRemoteOnboardingEvent = useCallback(
-    (eventName: string, properties: Record<string, unknown> = {}) => {
-      posthog?.capture(eventName, {
-        ...properties,
-        flow: 'remote_onboarding_ui',
-        source: 'frontend',
-      });
-    },
-    [posthog]
-  );
 
   const logoSrc =
     resolveTheme(theme) === 'dark'
@@ -187,15 +165,6 @@ export function LandingPage() {
     setCustomCommand(config.editor.custom_command || '');
     setInitialized(true);
   }, [config, initialized]);
-
-  useEffect(() => {
-    if (!config || !initialized || hasTrackedStageViewRef.current) return;
-
-    trackRemoteOnboardingEvent(REMOTE_ONBOARDING_EVENTS.STAGE_VIEWED, {
-      stage: 'landing',
-    });
-    hasTrackedStageViewRef.current = true;
-  }, [config, initialized, trackRemoteOnboardingEvent]);
 
   useEffect(() => {
     if (
@@ -268,17 +237,6 @@ export function LandingPage() {
       auto_install_extension: true,
     };
 
-    trackRemoteOnboardingEvent(REMOTE_ONBOARDING_EVENTS.STAGE_SUBMITTED, {
-      stage: 'landing',
-      method: 'continue',
-      selected_agent: selectedAgent,
-      editor_type: editorType,
-      custom_editor_command_set:
-        editorType === EditorType.CUSTOM && customCommand.trim() !== '',
-      sound_enabled: soundEnabled,
-      sound_file: soundEnabled ? soundFile : null,
-    });
-
     setSaving(true);
     const success = await updateAndSaveConfig({
       onboarding_acknowledged: true,
@@ -297,20 +255,11 @@ export function LandingPage() {
     setSaving(false);
 
     if (success) {
-      trackRemoteOnboardingEvent(REMOTE_ONBOARDING_EVENTS.STAGE_COMPLETED, {
-        stage: 'landing',
-        destination: '/onboarding/sign-in',
-      });
       appNavigation.goToOnboardingSignIn({
         replace: true,
       });
       return;
     }
-
-    trackRemoteOnboardingEvent(REMOTE_ONBOARDING_EVENTS.STAGE_FAILED, {
-      stage: 'landing',
-      reason: 'config_save_failed',
-    });
   };
 
   if (loading || !config || !initialized) {

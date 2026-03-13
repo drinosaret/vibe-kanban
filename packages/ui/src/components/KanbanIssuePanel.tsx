@@ -271,9 +271,9 @@ export function KanbanIssuePanel({
             onRemoveParentIssue={onRemoveParentIssue}
             onStatusClick={() => onFormChange('statusId', formData.statusId)}
             onPriorityClick={() => onFormChange('priority', formData.priority)}
-            onAssigneeClick={() =>
+            onAssigneeClick={assigneeUsers ? () =>
               onFormChange('assigneeIds', formData.assigneeIds)
-            }
+            : undefined}
             disabled={isSubmitting}
           />
         </div>

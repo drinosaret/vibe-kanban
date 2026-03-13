@@ -10,16 +10,12 @@ use db::{
     },
 };
 use git_host::{GitHostError, GitHostProvider, GitHostService};
-use serde_json::json;
 use sqlx::error::Error as SqlxError;
 use thiserror::Error;
 use tokio::time::interval;
 use tracing::{debug, error, info, warn};
 
-use crate::services::{
-    analytics::AnalyticsContext, container::ContainerService, remote_client::RemoteClient,
-    remote_sync,
-};
+use crate::services::{container::ContainerService, remote_client::RemoteClient, remote_sync};
 
 #[derive(Debug, Error)]
 enum PrMonitorError {
@@ -46,7 +42,6 @@ impl PrMonitorError {
 pub struct PrMonitorService<C: ContainerService> {
     db: DBService,
     poll_interval: Duration,
-    analytics: Option<AnalyticsContext>,
     container: C,
     remote_client: Option<RemoteClient>,
 }
@@ -54,14 +49,12 @@ pub struct PrMonitorService<C: ContainerService> {
 impl<C: ContainerService + Send + Sync + 'static> PrMonitorService<C> {
     pub async fn spawn(
         db: DBService,
-        analytics: Option<AnalyticsContext>,
         container: C,
         remote_client: Option<RemoteClient>,
     ) -> tokio::task::JoinHandle<()> {
         let service = Self {
             db,
             poll_interval: Duration::from_secs(60), // Check every minute
-            analytics,
             container,
             remote_client,
         };
@@ -164,16 +157,6 @@ impl<C: ContainerService + Send + Sync + 'static> PrMonitorService<C> {
                     );
                 }
 
-                // Track analytics event
-                if let Some(analytics) = &self.analytics {
-                    analytics.analytics_service.track_event(
-                        &analytics.user_id,
-                        "pr_merged",
-                        Some(json!({
-                            "workspace_id": workspace.id.to_string(),
-                        })),
-                    );
-                }
             }
         }
 

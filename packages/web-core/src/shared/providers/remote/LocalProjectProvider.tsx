@@ -1,17 +1,21 @@
 import { useMemo, useCallback, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { genId } from '@/shared/lib/id';
 import { useLocalIssues, localIssueKeys } from '@/shared/hooks/useLocalIssues';
 import {
   useLocalStatuses,
   localStatusKeys,
 } from '@/shared/hooks/useLocalStatuses';
-import { useLocalTags, localTagKeys } from '@/shared/hooks/useLocalTags';
+import { useLocalTags, useLocalIssueTags, localTagKeys } from '@/shared/hooks/useLocalTags';
 import {
   localIssuesApi,
   localStatusesApi,
   localTagsApi,
+  localRelationshipsApi,
 } from '@/shared/lib/localApi';
+import {
+  useLocalWorkspaceIssues,
+} from '@/shared/hooks/useLocalWorkspaceIssues';
 import type {
   Issue,
   ProjectStatus,
@@ -59,6 +63,33 @@ export function LocalProjectProvider({
   const { data: statuses = [], isLoading: statusesLoading } =
     useLocalStatuses(projectId);
   const { data: tags = [] } = useLocalTags(projectId);
+  const { data: rawIssueTags = [] } = useLocalIssueTags(projectId);
+
+  // Map raw issue tags (no id field) to IssueTag shape (with synthetic id)
+  const issueTags: IssueTag[] = useMemo(
+    () => rawIssueTags.map((it) => ({ id: `${it.issue_id}:${it.tag_id}`, issue_id: it.issue_id, tag_id: it.tag_id })),
+    [rawIssueTags]
+  );
+
+  const invalidateIssueTags = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: localTagKeys.issueTags(projectId) }),
+    [queryClient, projectId]
+  );
+
+  // Relationships
+  const relationshipsQueryKey = useMemo(() => ['local-relationships', projectId] as const, [projectId]);
+  const { data: issueRelationships = [] } = useQuery({
+    queryKey: relationshipsQueryKey,
+    queryFn: () => localRelationshipsApi.listByProject(projectId),
+    enabled: !!projectId,
+  });
+  const invalidateRelationships = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: relationshipsQueryKey }),
+    [queryClient, relationshipsQueryKey]
+  );
+
+  // Workspace-issue links
+  const { data: workspaceIssueLinks = [] } = useLocalWorkspaceIssues(projectId);
 
   const isLoading = issuesLoading || statusesLoading;
 
@@ -117,10 +148,28 @@ export function LocalProjectProvider({
   // Stubs for features not available locally
   const emptyAssignees: IssueAssignee[] = useMemo(() => [], []);
   const emptyFollowers: IssueFollower[] = useMemo(() => [], []);
-  const emptyIssueTags: IssueTag[] = useMemo(() => [], []);
-  const emptyRelationships: IssueRelationship[] = useMemo(() => [], []);
   const emptyPullRequests: PullRequest[] = useMemo(() => [], []);
-  const emptyWorkspaces: Workspace[] = useMemo(() => [], []);
+
+  // Build Workspace objects from local workspace-issue links so
+  // IssueWorkspacesSectionContainer can display them.
+  const workspaces: Workspace[] = useMemo(
+    () =>
+      workspaceIssueLinks.map((link) => ({
+        id: link.workspace_id,
+        project_id: link.project_id,
+        owner_user_id: '',
+        issue_id: link.issue_id,
+        local_workspace_id: link.workspace_id,
+        name: null,
+        archived: false,
+        files_changed: null,
+        lines_added: null,
+        lines_removed: null,
+        created_at: link.created_at,
+        updated_at: link.created_at,
+      })),
+    [workspaceIssueLinks]
+  );
 
   const getAssigneesForIssue = useCallback(
     (_issueId: string): IssueAssignee[] => [],
@@ -131,24 +180,29 @@ export function LocalProjectProvider({
     []
   );
   const getTagsForIssue = useCallback(
-    (_issueId: string): IssueTag[] => [],
-    []
+    (issueId: string): IssueTag[] => issueTags.filter((it) => it.issue_id === issueId),
+    [issueTags]
   );
   const getTagObjectsForIssue = useCallback(
-    (_issueId: string): Tag[] => [],
-    []
+    (issueId: string): Tag[] => {
+      const tagIds = new Set(issueTags.filter((it) => it.issue_id === issueId).map((it) => it.tag_id));
+      return tags.filter((t) => tagIds.has(t.id));
+    },
+    [issueTags, tags]
   );
   const getRelationshipsForIssue = useCallback(
-    (_issueId: string): IssueRelationship[] => [],
-    []
+    (issueId: string): IssueRelationship[] =>
+      issueRelationships.filter((r) => r.issue_id === issueId || r.related_issue_id === issueId),
+    [issueRelationships]
   );
   const getPullRequestsForIssue = useCallback(
     (_issueId: string): PullRequest[] => [],
     []
   );
   const getWorkspacesForIssue = useCallback(
-    (_issueId: string): Workspace[] => [],
-    []
+    (issueId: string): Workspace[] =>
+      workspaces.filter((w) => w.issue_id === issueId),
+    [workspaces]
   );
 
   // ---------------------------------------------------------------------------
@@ -377,6 +431,69 @@ export function LocalProjectProvider({
   );
 
   // ---------------------------------------------------------------------------
+  // Issue tag mutations
+  // ---------------------------------------------------------------------------
+
+  const insertIssueTag = useCallback(
+    (data: { issue_id: string; tag_id: string }): InsertResult<IssueTag> => {
+      const currentTagIds = issueTags
+        .filter((it) => it.issue_id === data.issue_id)
+        .map((it) => it.tag_id);
+      const newTagIds = [...currentTagIds, data.tag_id];
+      const syntheticId = `${data.issue_id}:${data.tag_id}`;
+      const persisted = localTagsApi.setForIssue(data.issue_id, newTagIds).then(() => {
+        invalidateIssueTags();
+        return { id: syntheticId, ...data } as IssueTag;
+      });
+      return { data: { id: syntheticId, ...data } as IssueTag, persisted };
+    },
+    [issueTags, invalidateIssueTags]
+  );
+
+  const removeIssueTag = useCallback(
+    (id: string): MutationResult => {
+      // id is synthetic: "issueId:tagId"
+      const match = issueTags.find((it) => it.id === id);
+      if (!match) return { persisted: Promise.resolve() };
+      const remainingTagIds = issueTags
+        .filter((it) => it.issue_id === match.issue_id && it.id !== id)
+        .map((it) => it.tag_id);
+      const persisted = localTagsApi.setForIssue(match.issue_id, remainingTagIds).then(() => {
+        invalidateIssueTags();
+      });
+      return { persisted };
+    },
+    [issueTags, invalidateIssueTags]
+  );
+
+  // ---------------------------------------------------------------------------
+  // Issue relationship mutations
+  // ---------------------------------------------------------------------------
+
+  const insertIssueRelationship = useCallback(
+    (data: { issue_id: string; related_issue_id: string; relationship_type: string }): InsertResult<IssueRelationship> => {
+      const tempId = genId();
+      const optimistic = { id: tempId, ...data, created_at: new Date().toISOString() } as IssueRelationship;
+      const persisted = localRelationshipsApi.create(data as Parameters<typeof localRelationshipsApi.create>[0]).then((result) => {
+        invalidateRelationships();
+        return result as unknown as IssueRelationship;
+      });
+      return { data: optimistic, persisted };
+    },
+    [invalidateRelationships]
+  );
+
+  const removeIssueRelationship = useCallback(
+    (id: string): MutationResult => {
+      const persisted = localRelationshipsApi.delete(id).then(() => {
+        invalidateRelationships();
+      });
+      return { persisted };
+    },
+    [invalidateRelationships]
+  );
+
+  // ---------------------------------------------------------------------------
   // Context value
   // ---------------------------------------------------------------------------
 
@@ -390,10 +507,10 @@ export function LocalProjectProvider({
       tags,
       issueAssignees: emptyAssignees,
       issueFollowers: emptyFollowers,
-      issueTags: emptyIssueTags,
-      issueRelationships: emptyRelationships,
+      issueTags,
+      issueRelationships: issueRelationships as IssueRelationship[],
       pullRequests: emptyPullRequests,
-      workspaces: emptyWorkspaces,
+      workspaces,
 
       // Loading/error
       isLoading,
@@ -424,10 +541,10 @@ export function LocalProjectProvider({
       removeIssueAssignee: stubRemove,
       insertIssueFollower: stubInsert as ProjectContextValue['insertIssueFollower'],
       removeIssueFollower: stubRemove,
-      insertIssueTag: stubInsert as ProjectContextValue['insertIssueTag'],
-      removeIssueTag: stubRemove,
-      insertIssueRelationship: stubInsert as ProjectContextValue['insertIssueRelationship'],
-      removeIssueRelationship: stubRemove,
+      insertIssueTag: insertIssueTag as ProjectContextValue['insertIssueTag'],
+      removeIssueTag,
+      insertIssueRelationship: insertIssueRelationship as ProjectContextValue['insertIssueRelationship'],
+      removeIssueRelationship,
 
       // Lookup helpers
       getIssue,
@@ -454,10 +571,10 @@ export function LocalProjectProvider({
       tags,
       emptyAssignees,
       emptyFollowers,
-      emptyIssueTags,
-      emptyRelationships,
+      issueTags,
+      issueRelationships,
       emptyPullRequests,
-      emptyWorkspaces,
+      workspaces,
       isLoading,
       invalidateIssues,
       invalidateStatuses,
@@ -473,6 +590,10 @@ export function LocalProjectProvider({
       removeTag,
       stubInsert,
       stubRemove,
+      insertIssueTag,
+      removeIssueTag,
+      insertIssueRelationship,
+      removeIssueRelationship,
       getIssue,
       getIssuesForStatus,
       getAssigneesForIssue,

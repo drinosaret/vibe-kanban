@@ -79,8 +79,6 @@ export default function HomePage() {
     });
 
     void SettingsDialog.show({
-      initialSection: "organizations",
-      initialState: { organizationId: legacyOrgId },
       sections: REMOTE_SETTINGS_SECTIONS,
     });
   }, [navigate, search.legacyOrgSettingsOrgId, setSelectedOrgId]);

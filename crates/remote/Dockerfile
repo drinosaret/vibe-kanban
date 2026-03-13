@@ -26,13 +26,9 @@ RUN pnpm -C packages/remote-web build
 FROM rust:1.93-slim-bookworm AS builder
 ARG APP_NAME
 ARG FEATURES
-ARG POSTHOG_API_KEY=""
-ARG POSTHOG_API_ENDPOINT=""
 ARG SENTRY_DSN_REMOTE=""
 
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
-ENV POSTHOG_API_KEY=${POSTHOG_API_KEY}
-ENV POSTHOG_API_ENDPOINT=${POSTHOG_API_ENDPOINT}
 ENV SENTRY_DSN_REMOTE=${SENTRY_DSN_REMOTE}
 
 # Install build dependencies, plus git and openssh-client for private repo access

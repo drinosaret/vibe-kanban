@@ -153,7 +153,6 @@ export function RemoteActionsProvider({
     async (action: ActionDefinition): Promise<void> => {
       if (action.id === "settings") {
         await SettingsDialog.show({
-          initialSection: "organizations",
           sections: REMOTE_SETTINGS_SECTIONS,
         });
         return;

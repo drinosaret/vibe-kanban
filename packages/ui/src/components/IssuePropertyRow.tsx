@@ -33,7 +33,7 @@ export interface IssuePropertyRowProps {
   onRemoveParentIssue?: () => void;
   onStatusClick: () => void;
   onPriorityClick: () => void;
-  onAssigneeClick: () => void;
+  onAssigneeClick?: () => void;
   onAddClick?: () => void;
   disabled?: boolean;
   className?: string;
@@ -79,20 +79,22 @@ export function IssuePropertyRow({
         {priority ? priorityLabels[priority] : 'No priority'}
       </PrimaryButton>
 
-      <PrimaryButton
-        variant="tertiary"
-        onClick={onAssigneeClick}
-        disabled={disabled}
-      >
-        {assigneeUsers && assigneeUsers.length > 0 ? (
-          <KanbanAssignee assignees={assigneeUsers} />
-        ) : (
-          <>
-            <UsersIcon className="size-icon-xs" weight="bold" />
-            {t('kanban.assignee', 'Assignee')}
-          </>
-        )}
-      </PrimaryButton>
+      {onAssigneeClick && (
+        <PrimaryButton
+          variant="tertiary"
+          onClick={onAssigneeClick}
+          disabled={disabled}
+        >
+          {assigneeUsers && assigneeUsers.length > 0 ? (
+            <KanbanAssignee assignees={assigneeUsers} />
+          ) : (
+            <>
+              <UsersIcon className="size-icon-xs" weight="bold" />
+              {t('kanban.assignee', 'Assignee')}
+            </>
+          )}
+        </PrimaryButton>
+      )}
 
       {creatorUser &&
         (creatorUser.first_name?.trim() || creatorUser.username?.trim()) && (

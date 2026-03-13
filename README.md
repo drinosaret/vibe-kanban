@@ -6,6 +6,7 @@
 
 - **No worktree isolation** — workspaces operate directly in the repo instead of creating isolated git worktrees per workspace. Simpler setup, no symlink juggling.
 - **Local kanban** — SQLite-backed projects, issues, statuses, and tags that work without any cloud/remote infrastructure.
+- **No telemetry** — all PostHog analytics, usage tracking, and phone-home code has been removed. No data leaves your machine.
 - **Windows dev support** — `.npmrc` configured with `script-shell=bash` so pnpm scripts work on Windows.
 
 ## Upstream

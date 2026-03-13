@@ -170,20 +170,22 @@ export function KanbanFilterBar<
             isMobile ? 'gap-half' : 'gap-base'
           )}
         >
-          <ButtonGroup className="flex-wrap">
-            <ButtonGroupItem
-              active={activeViewId === viewIds.TEAM}
-              onClick={() => onViewChange(viewIds.TEAM)}
-            >
-              {t('kanban.team', 'Team')}
-            </ButtonGroupItem>
-            <ButtonGroupItem
-              active={activeViewId === viewIds.PERSONAL}
-              onClick={() => onViewChange(viewIds.PERSONAL)}
-            >
-              {t('kanban.personal', 'Personal')}
-            </ButtonGroupItem>
-          </ButtonGroup>
+          {users.length > 0 && (
+            <ButtonGroup className="flex-wrap">
+              <ButtonGroupItem
+                active={activeViewId === viewIds.TEAM}
+                onClick={() => onViewChange(viewIds.TEAM)}
+              >
+                {t('kanban.team', 'Team')}
+              </ButtonGroupItem>
+              <ButtonGroupItem
+                active={activeViewId === viewIds.PERSONAL}
+                onClick={() => onViewChange(viewIds.PERSONAL)}
+              >
+                {t('kanban.personal', 'Personal')}
+              </ButtonGroupItem>
+            </ButtonGroup>
+          )}
 
           {isMobile ? (
             <button

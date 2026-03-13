@@ -9,7 +9,9 @@ import {
 import { useDropzone } from 'react-dropzone';
 import { useTranslation } from 'react-i18next';
 import { IssueProvider } from '@/integrations/remote/IssueProvider';
+import { LocalIssueProvider } from '@/shared/providers/remote/LocalIssueProvider';
 import { useIssueContext } from '@/shared/hooks/useIssueContext';
+import { getRemoteApiUrl } from '@/shared/lib/remoteApi';
 import { useScratch } from '@/shared/hooks/useScratch';
 import { useDebouncedCallback } from '@/shared/hooks/useDebouncedCallback';
 import { useOrgContext } from '@/shared/hooks/useOrgContext';
@@ -44,15 +46,17 @@ interface IssueCommentsSectionContainerProps {
 export function IssueCommentsSectionContainer({
   issueId,
 }: IssueCommentsSectionContainerProps) {
+  const Provider = getRemoteApiUrl() ? IssueProvider : LocalIssueProvider;
   return (
-    <IssueProvider issueId={issueId}>
+    <Provider issueId={issueId}>
       <IssueCommentsSectionContent />
-    </IssueProvider>
+    </Provider>
   );
 }
 
 function IssueCommentsSectionContent() {
   const { t } = useTranslation('common');
+  const isLocalOnly = !getRemoteApiUrl();
   const { membersWithProfilesById } = useOrgContext();
   const { projectId } = useProjectContext();
   const issueContext = useIssueContext();
@@ -185,17 +189,19 @@ function IssueCommentsSectionContent() {
           : undefined;
         const isAuthor =
           comment.author_id !== null && comment.author_id === currentUserId;
-        const canModify = isAuthor || isCurrentUserAdmin;
+        const canModify = isLocalOnly || isAuthor || isCurrentUserAdmin;
         return {
           id: comment.id,
           authorId: comment.author_id,
-          authorName: comment.author_id
-            ? author
-              ? `${author.first_name ?? ''} ${author.last_name ?? ''}`.trim() ||
-                author.email ||
-                t('kanban.unknownUser')
-              : t('kanban.unknownUser')
-            : t('kanban.deletedUser'),
+          authorName: isLocalOnly
+            ? t('kanban.you', 'You')
+            : comment.author_id
+              ? author
+                ? `${author.first_name ?? ''} ${author.last_name ?? ''}`.trim() ||
+                  author.email ||
+                  t('kanban.unknownUser')
+                : t('kanban.unknownUser')
+              : t('kanban.deletedUser'),
           message: comment.message,
           createdAt: comment.created_at,
           author: author ?? null,
@@ -211,6 +217,7 @@ function IssueCommentsSectionContent() {
     membersWithProfilesById,
     currentUserId,
     isCurrentUserAdmin,
+    isLocalOnly,
     t,
   ]);
 

@@ -211,14 +211,6 @@
           "enterLabel": "Enter（Shift+Enter 換行）"
         }
       },
-      "privacy": {
-        "title": "隱私",
-        "description": "透過分享匿名使用資料來協助改善 Vibe Kanban。",
-        "telemetry": {
-          "label": "啟用遙測",
-          "helper": "啟用匿名使用事件追蹤以協助改善應用程式。不會收集提示或專案資訊。"
-        }
-      },
       "taskTemplates": {
         "title": "標籤",
         "description": "建立可用 @tag_name 插入任務描述的可重用文字片段。"

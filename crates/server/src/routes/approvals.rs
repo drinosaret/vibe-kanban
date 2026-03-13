@@ -26,19 +26,7 @@ pub async fn respond_to_approval(
     let service = deployment.approvals();
 
     match service.respond(&id, request).await {
-        Ok((outcome, context)) => {
-            deployment
-                .track_if_analytics_allowed(
-                    "approval_responded",
-                    serde_json::json!({
-                        "approval_id": &id,
-                        "status": format!("{:?}", outcome),
-                        "tool_name": context.tool_name,
-                        "execution_process_id": context.execution_process_id.to_string(),
-                    }),
-                )
-                .await;
-
+        Ok((outcome, _context)) => {
             Ok(ResponseJson(ApiResponse::success(outcome)))
         }
         Err(e) => {

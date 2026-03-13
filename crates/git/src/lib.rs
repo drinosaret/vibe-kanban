@@ -99,6 +99,9 @@ impl Commit {
     pub fn new(id: git2::Oid) -> Self {
         Self(id)
     }
+    pub fn from_oid_str(oid: &str) -> Result<Self, git2::Error> {
+        Ok(Self(git2::Oid::from_str(oid)?))
+    }
     pub fn as_oid(&self) -> git2::Oid {
         self.0
     }

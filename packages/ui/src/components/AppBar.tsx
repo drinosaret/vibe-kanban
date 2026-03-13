@@ -11,11 +11,9 @@ import {
   PlusIcon,
   KanbanIcon,
   SpinnerIcon,
-  StarIcon,
 } from '@phosphor-icons/react';
 import { cn } from '../lib/cn';
 import { AppBarButton } from './AppBarButton';
-import { AppBarSocialLink } from './AppBarSocialLink';
 import {
   Popover,
   PopoverTrigger,
@@ -24,12 +22,6 @@ import {
 } from './Popover';
 import { Tooltip } from './Tooltip';
 import { useTranslation } from 'react-i18next';
-
-function formatStarCount(count: number): string {
-  if (count < 1000) return String(count);
-  const k = count / 1000;
-  return k >= 10 ? `${Math.floor(k)}k` : `${k.toFixed(1)}k`;
-}
 
 function getProjectInitials(name: string): string {
   const trimmed = name.trim();
@@ -65,11 +57,7 @@ interface AppBarProps {
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
   userPopover?: ReactNode;
-  starCount?: number | null;
-  onlineCount?: number | null;
   appVersion?: string | null;
-  githubIconPath: string;
-  discordIconPath: string;
 }
 
 export interface AppBarProject {
@@ -121,11 +109,7 @@ export function AppBar({
   onHoverStart,
   onHoverEnd,
   userPopover,
-  starCount,
-  onlineCount,
   appVersion,
-  githubIconPath,
-  discordIconPath,
 }: AppBarProps) {
   const { t } = useTranslation('common');
   const showHostsSection =
@@ -378,30 +362,9 @@ export function AppBar({
         </Tooltip>
       )}
 
-      {/* Bottom section: User popover + GitHub + Discord */}
+      {/* Bottom section: User popover + version */}
       <div className="mt-auto pt-base flex flex-col items-center gap-4">
         {userPopover}
-        <AppBarSocialLink
-          href="https://github.com/BloopAI/vibe-kanban"
-          label="Star on GitHub"
-          iconPath={githubIconPath}
-          badge={
-            starCount != null && (
-              <>
-                <StarIcon size={10} weight="fill" />
-                {formatStarCount(starCount)}
-              </>
-            )
-          }
-        />
-        <AppBarSocialLink
-          href="https://discord.gg/AC4nwVtJM3"
-          label="Join our Discord"
-          iconPath={discordIconPath}
-          badge={
-            onlineCount != null && (onlineCount > 999 ? '999+' : onlineCount)
-          }
-        />
         {appVersion && (
           <p className="text-[9px] font-ibm-plex-mono text-low leading-none">
             v{appVersion}

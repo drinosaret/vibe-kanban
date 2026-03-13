@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import {
   GearIcon,
   GitBranchIcon,
-  BuildingsIcon,
   CloudIcon,
   CpuIcon,
   PlugIcon,
@@ -34,7 +33,6 @@ const SETTINGS_SECTIONS: {
 }[] = [
   { id: 'general', icon: GearIcon },
   { id: 'repos', icon: GitBranchIcon },
-  { id: 'organizations', icon: BuildingsIcon },
   { id: 'remote-projects', icon: CloudIcon },
   { id: 'agents', icon: CpuIcon },
   { id: 'mcp', icon: PlugIcon },

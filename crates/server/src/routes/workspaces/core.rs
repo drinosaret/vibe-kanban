@@ -146,15 +146,6 @@ pub async fn delete_workspace(
         return Err(ApiError::Database(SqlxError::RowNotFound));
     }
 
-    deployment
-        .track_if_analytics_allowed(
-            "workspace_deleted",
-            serde_json::json!({
-                "workspace_id": workspace_id.to_string(),
-            }),
-        )
-        .await;
-
     if query.delete_remote {
         if let Ok(client) = deployment.remote_client() {
             match client.delete_workspace(workspace_id).await {

@@ -58,6 +58,7 @@ pub enum PrError {
     GitCliNotInstalled,
     TargetBranchNotFound { branch: String },
     UnsupportedProvider,
+    NoRemotesConfigured,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -212,7 +213,15 @@ pub async fn create_pr(
     let worktree_path = workspace_path.join(&repo.name);
 
     let git = deployment.git();
-    let push_remote = git.resolve_remote_for_branch(&repo_path, &workspace.branch)?;
+    let push_remote = match git.resolve_remote_for_branch(&repo_path, &workspace.branch) {
+        Ok(r) => r,
+        Err(GitServiceError::InvalidRepository(_)) => {
+            return Ok(ResponseJson(ApiResponse::error_with_data(
+                PrError::NoRemotesConfigured,
+            )));
+        }
+        Err(e) => return Err(ApiError::GitService(e)),
+    };
 
     // Try to get the remote from the branch name (works for remote-tracking branches like "upstream/main").
     // Fall back to push_remote if the branch doesn't exist locally or isn't a remote-tracking branch.
@@ -332,16 +341,6 @@ pub async fn create_pr(
                 tracing::warn!("Failed to open PR in browser: {}", e);
             }
 
-            deployment
-                .track_if_analytics_allowed(
-                    "pr_created",
-                    serde_json::json!({
-                        "workspace_id": workspace.id.to_string(),
-                        "provider": format!("{:?}", provider),
-                    }),
-                )
-                .await;
-
             // Trigger auto-description follow-up if enabled
             if request.auto_generate_description
                 && let Err(e) = trigger_pr_description_follow_up(
@@ -411,7 +410,15 @@ pub async fn attach_existing_pr(
     }
 
     let git = deployment.git();
-    let remote = git.resolve_remote_for_branch(&repo.path, &workspace_repo.target_branch)?;
+    let remote = match git.resolve_remote_for_branch(&repo.path, &workspace_repo.target_branch) {
+        Ok(r) => r,
+        Err(git::GitServiceError::InvalidRepository(_)) => {
+            return Ok(ResponseJson(ApiResponse::error_with_data(
+                PrError::NoRemotesConfigured,
+            )));
+        }
+        Err(e) => return Err(ApiError::GitService(e)),
+    };
 
     let git_host = match GitHostService::from_url(&remote.url) {
         Ok(host) => host,
@@ -803,17 +810,6 @@ pub async fn create_workspace_from_pr(
             }
         }
     }
-
-    deployment
-        .track_if_analytics_allowed(
-            "workspace_created_from_pr",
-            serde_json::json!({
-                "workspace_id": workspace.id.to_string(),
-                "pr_number": payload.pr_number,
-                "run_setup": payload.run_setup,
-            }),
-        )
-        .await;
 
     tracing::info!(
         "Created workspace {} from PR #{}",

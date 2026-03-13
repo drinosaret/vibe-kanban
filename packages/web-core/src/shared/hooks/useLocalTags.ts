@@ -4,6 +4,7 @@ import { localTagsApi } from '@/shared/lib/localApi';
 export const localTagKeys = {
   all: ['local-tags'] as const,
   list: (projectId: string) => ['local-tags', projectId] as const,
+  issueTags: (projectId: string) => ['local-issue-tags', projectId] as const,
 };
 
 export function useLocalTags(projectId: string) {
@@ -36,6 +37,14 @@ export function useDeleteLocalTag(projectId: string) {
         queryKey: localTagKeys.list(projectId),
       });
     },
+  });
+}
+
+export function useLocalIssueTags(projectId: string) {
+  return useQuery({
+    queryKey: localTagKeys.issueTags(projectId),
+    queryFn: () => localTagsApi.listIssueTags(projectId),
+    enabled: !!projectId,
   });
 }
 
