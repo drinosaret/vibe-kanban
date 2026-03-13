@@ -1532,30 +1532,9 @@ impl ContainerService for LocalContainerService {
         Ok(Box::pin(futures::stream::select_all(streams)))
     }
 
-    async fn try_commit_changes(&self, ctx: &ExecutionContext) -> Result<bool, ContainerError> {
-        if !matches!(
-            ctx.execution_process.run_reason,
-            ExecutionProcessRunReason::CodingAgent | ExecutionProcessRunReason::CleanupScript,
-        ) {
-            return Ok(false);
-        }
-
-        let message = self.get_commit_message(ctx).await;
-
-        let container_ref = ctx
-            .workspace
-            .container_ref
-            .as_ref()
-            .ok_or_else(|| ContainerError::Other(anyhow!("Container reference not found")))?;
-        let workspace_root = PathBuf::from(container_ref);
-
-        let repos_with_changes = self.check_repos_for_changes(&workspace_root, &ctx.repos)?;
-        if repos_with_changes.is_empty() {
-            tracing::debug!("No changes to commit in any repository");
-            return Ok(false);
-        }
-
-        Ok(self.commit_repos(repos_with_changes, &message))
+    async fn try_commit_changes(&self, _ctx: &ExecutionContext) -> Result<bool, ContainerError> {
+        // Auto-commit disabled — let the user commit manually
+        Ok(false)
     }
 
     /// Copy files from the original project directory to the worktree.
