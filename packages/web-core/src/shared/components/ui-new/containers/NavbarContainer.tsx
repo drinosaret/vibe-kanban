@@ -16,6 +16,7 @@ import { useShape } from '@/shared/integrations/electric/hooks';
 import { PROJECT_ISSUES_SHAPE } from 'shared/remote-types';
 import { RemoteIssueLink } from './RemoteIssueLink';
 import { AppBarUserPopoverContainer } from './AppBarUserPopoverContainer';
+import { useWorkspaceRepo } from '@/shared/hooks/useWorkspaceRepo';
 import { NavbarActionGroups } from '@/shared/actions';
 import {
   NavbarDivider,
@@ -189,13 +190,25 @@ export function NavbarContainer({
     [actionCtx, handleExecuteAction, isMigratePage]
   );
 
+  // Fetch workspace repos to show repo path in the title
+  const { repos: workspaceRepos } = useWorkspaceRepo(
+    selectedWorkspace?.id,
+    { enabled: !isOnProjectPage && !isCreateMode && !isMigratePage && !!selectedWorkspace?.id }
+  );
+
   const navbarTitle = isCreateMode
     ? 'Create Workspace'
     : isMigratePage
       ? 'Migrate'
       : isOnProjectPage
         ? orgName
-        : selectedWorkspace?.branch;
+        : (() => {
+            const branch = selectedWorkspace?.branch ?? '';
+            const folderName = workspaceRepos.length === 1
+              ? workspaceRepos[0].path.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? null
+              : null;
+            return folderName ? `${branch} · ${folderName}` : branch;
+          })();
 
   // Breadcrumbs: Project / Issue / Workspace (only on workspace pages with linked project)
   const linkedProjectId = linkedRemoteWorkspace?.project_id ?? null;
@@ -255,7 +268,11 @@ export function NavbarContainer({
     const workspaceLabel =
       selectedWorkspace?.name || selectedWorkspace?.branch || '';
     if (workspaceLabel) {
-      items.push({ label: workspaceLabel });
+      const folderName = workspaceRepos.length === 1
+        ? workspaceRepos[0].path.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? null
+        : null;
+      const label = folderName ? `${workspaceLabel} · ${folderName}` : workspaceLabel;
+      items.push({ label });
     }
 
     return items.length > 1 ? items : undefined;
@@ -268,6 +285,7 @@ export function NavbarContainer({
     projectIssues,
     selectedWorkspace?.name,
     selectedWorkspace?.branch,
+    workspaceRepos,
     appNavigation,
   ]);
 

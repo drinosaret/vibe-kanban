@@ -28,6 +28,7 @@ import {
 import { RetryUiProvider } from '@/features/workspace-chat/model/contexts/RetryUiContext';
 import { createWorkspaceWithSession } from '@/shared/types/attempt';
 import { useAppNavigation } from '@/shared/hooks/useAppNavigation';
+import { useWorkspaceRepo } from '@/shared/hooks/useWorkspaceRepo';
 import { useCurrentKanbanRouteState } from '@/shared/hooks/useCurrentKanbanRouteState';
 import {
   buildKanbanIssueComposerKey,
@@ -185,7 +186,14 @@ function WorkspaceSessionPanel({
     return getIssue(breadcrumbIssueId)?.simple_id ?? null;
   }, [breadcrumbIssueId, getIssue]);
 
+  const { repos: workspaceRepos } = useWorkspaceRepo(workspaceId);
   const workspaceBranch = workspace?.branch ?? workspaceSummary?.branch ?? null;
+  const repoFolderName = workspaceRepos.length === 1
+    ? workspaceRepos[0].path.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? null
+    : null;
+  const workspaceLabel = workspaceBranch
+    ? (repoFolderName ? `${workspaceBranch} · ${repoFolderName}` : workspaceBranch)
+    : 'Workspace';
 
   const handleOpenIssuePanel = useCallback(() => {
     if (projectId && breadcrumbIssueId) {
@@ -245,7 +253,7 @@ function WorkspaceSessionPanel({
                     className={breadcrumbButtonClass}
                     aria-label="Open workspace"
                   >
-                    {workspaceBranch ?? 'Workspace'}
+                    {workspaceLabel}
                   </button>
                 </div>
 
