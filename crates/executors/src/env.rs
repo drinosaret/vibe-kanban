@@ -89,8 +89,20 @@ impl ExecutionEnv {
         commit_reminder: bool,
         commit_reminder_prompt: String,
     ) -> Self {
+        let mut vars = HashMap::new();
+
+        // On Windows, prevent project-level .npmrc `script-shell` settings from
+        // routing npx through WSL bash (C:\Windows\System32\bash.exe), where
+        // `node` is typically not installed. Force npx to use cmd.exe, which
+        // correctly executes .cmd shims that resolve node.
+        #[cfg(windows)]
+        vars.insert(
+            "NPM_CONFIG_SCRIPT_SHELL".to_string(),
+            "cmd.exe".to_string(),
+        );
+
         Self {
-            vars: HashMap::new(),
+            vars,
             repo_context,
             commit_reminder,
             commit_reminder_prompt,
